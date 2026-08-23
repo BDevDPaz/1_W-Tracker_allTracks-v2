@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "W Tracker",
+    "slug": "w-tracker",
+    "version": "2.0.0",
+    "newArchEnabled": true,
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#050505"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.bdevdpaz.wtracker",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
+        "NSLocationWhenInUseUsageDescription": "W Tracker requiere acceso a la ubicación para registrar las coordenadas de entrada y salida del sitio de trabajo.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "W Tracker requiere acceso a la ubicación en segundo plano para verificar automáticamente el cumplimiento de la geocerca operativa.",
+        "NSLocationAlwaysUsageDescription": "W Tracker utiliza la ubicación en segundo plano para monitorear desplazamientos y traslados remunerados entre destinos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#050505"
+      },
+      "package": "com.bdevdpaz.wtracker",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "WAKE_LOCK",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "W Tracker requiere acceso a la ubicación para registrar las coordenadas operativas.",
+          "locationAlwaysAndWhenInUsePermission": "W Tracker requiere monitoreo de ubicación en segundo plano para el control de geocercas.",
+          "locationAlwaysPermission": "W Tracker requiere monitoreo de ubicación en segundo plano para el control de geocercas.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-font",
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#C5A059"
+        }
+      ],
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "806cc651-5078-4d0f-bea4-c96e24ee7f6a"
+      }
+    },
+    "owner": "bdevdpaz"
+  }
+}
+

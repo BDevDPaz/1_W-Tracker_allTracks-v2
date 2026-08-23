@@ -1,0 +1,702 @@
+~/WTracker-V2.0.0 $ tree -I node_modules
+.
+├── App.tsx
+├── app.json
+├── assets
+│   ├── adaptive-icon.png
+│   ├── favicon.png
+│   ├── icon.png
+│   ├── notification-icon.png
+│   └── splash.png
+├── babel.config.js
+├── backups
+│   ├── WTracker.zip
+│   ├── WTracker1.zip
+│   ├── WTracker2.zip
+│   └── WTracker3.zip
+├── eas.json
+├── package-lock.json
+├── package.json
+├── src
+│   ├── components
+│   │   ├── atoms
+│   │   │   ├── Button.tsx
+│   │   │   ├── Card.tsx
+│   │   │   ├── Icon.tsx
+│   │   │   ├── IntegrityBadge.tsx
+│   │   │   ├── StatusPill.tsx
+│   │   │   └── index.ts
+│   │   ├── index.ts
+│   │   ├── molecules
+│   │   │   ├── SummaryBlock.tsx
+│   │   │   └── index.ts
+│   │   └── organisms
+│   │       ├── OperationalHeroCard.tsx
+│   │       ├── SessionCard.tsx
+│   │       ├── SessionTimeline.tsx
+│   │       ├── SystemHealthBlock.tsx
+│   │       └── index.ts
+│   ├── modals
+│   │   ├── DailySetupModal.tsx
+│   │   ├── EditSessionModal.tsx
+│   │   ├── ExitDetectionModal.tsx
+│   │   ├── LunchModal.tsx
+│   │   └── index.ts
+│   ├── navigation
+│   │   └── AppNavigator.tsx
+│   ├── screens
+│   │   ├── AjustesScreen.tsx
+│   │   ├── HistorialScreen.tsx
+│   │   ├── HoyScreen.tsx
+│   │   ├── OnboardingScreen.tsx
+│   │   ├── ReportesScreen.tsx
+│   │   └── index.ts
+│   ├── services
+│   │   ├── database
+│   │   │   └── DatabaseService.ts
+│   │   ├── geofence
+│   │   │   └── GeofenceService.ts
+│   │   ├── index.ts
+│   │   ├── pdf
+│   │   │   └── PDFService.ts
+│   │   ├── sessionEngine
+│   │   │   └── SessionEngineService.ts
+│   │   ├── settings
+│   │   │   └── SettingsService.ts
+│   │   └── toast
+│   │       └── ToastService.tsx
+│   ├── stores
+│   │   └── sessionStore.ts
+│   ├── theme
+│   │   ├── index.ts
+│   │   └── tokens.ts
+│   ├── types
+│   │   ├── contracts.ts
+│   │   └── index.ts
+│   └── utils
+│       ├── formatters.ts
+│       └── index.ts
+├── tests-zip3.txt
+├── tools
+│   ├── audit-output
+│   │   ├── dpdm_circular.json
+│   │   ├── dpdm_dead.json
+│   │   ├── dpdm_tree.json
+│   │   ├── graph.png
+│   │   ├── madge_graph.json
+│   │   ├── npm_audit.json
+│   │   ├── npm_outdated.json
+│   │   └── ts_files.json
+│   ├── dashboard.html
+│   ├── deps-audit.js
+│   └── deps-dashboard.js
+└── tsconfig.json
+
+24 directories, 68 files
+~/WTracker-V2.0.0 $ cat package.json
+{
+  "name": "w-tracker",
+  "version": "2.0.0",
+  "private": true,
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --watchAll=false"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "~14.0.4",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native-stack": "^6.9.17",
+    "expo": "^52.0.0",
+    "expo-asset": "~11.0.5",
+    "expo-crypto": "~14.0.2",
+    "expo-dev-client": "~5.0.20",
+    "expo-file-system": "~18.0.12",
+    "expo-font": "~13.0.4",
+    "expo-haptics": "~14.0.1",
+    "expo-location": "~18.0.10",
+    "expo-mail-composer": "~14.0.2",
+    "expo-notifications": "~0.29.14",
+    "expo-print": "~14.0.3",
+    "expo-sharing": "~13.0.1",
+    "expo-splash-screen": "~0.29.24",
+    "expo-sqlite": "~15.1.4",
+    "expo-status-bar": "~2.0.1",
+    "expo-task-manager": "~12.0.6",
+    "lucide-react-native": "^0.344.0",
+    "react": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-gesture-handler": "~2.20.2",
+    "react-native-reanimated": "~3.16.1",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.4.0",
+    "react-native-svg": "15.8.0",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@react-native-community/cli": "latest",
+    "@types/jest": "^29.5.12",
+    "@types/react": "~18.3.12",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "@typescript-eslint/type-utils": "^8.67.0",
+    "@typescript-eslint/utils": "^8.67.0",
+    "babel-plugin-module-resolver": "^5.0.3",
+    "eslint": "^8.57.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-native": "^5.0.0",
+    "jest": "^29.2.1",
+    "jest-expo": "~52.0.6",
+    "typescript": "~5.3.3",
+    "webpack-cli": "^7.2.2"
+  }
+}
+~/WTracker-V2.0.0 $ npm run lint
+npm notice run w-tracker@2.0.0 lint
+npm notice run eslint . --ext .ts,.tsx
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/App.tsx
+   90:16  warning  'e' is defined but never used              @typescript-eslint/no-unused-vars
+  121:20  warning  'geofenceError' is defined but never used  @typescript-eslint/no-unused-vars
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/atoms/Button.tsx
+  48:46  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/atoms/Card.tsx
+  47:42  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/atoms/Icon.tsx
+  58:42  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+  63:90  warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/atoms/IntegrityBadge.tsx
+  30:62  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/atoms/StatusPill.tsx
+  43:54  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/molecules/SummaryBlock.tsx
+  27:58  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/organisms/OperationalHeroCard.tsx
+  50:72  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/organisms/SessionCard.tsx
+  51:56  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/organisms/SessionTimeline.tsx
+  40:64  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/components/organisms/SystemHealthBlock.tsx
+  46:68  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/modals/DailySetupModal.tsx
+  34:64  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/modals/EditSessionModal.tsx
+  49:66  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/modals/ExitDetectionModal.tsx
+  30:70  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/modals/LunchModal.tsx
+  40:54  warning  Caution: `React` also has a named export `memo`. Check if you meant to write `import {memo} from 'react'` instead  import/no-named-as-default-member
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/screens/AjustesScreen.tsx
+  184:11  warning  'activeSession' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  402:21  warning  Unexpected any. Specify a different type            @typescript-eslint/no-explicit-any
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/screens/HistorialScreen.tsx
+  10:30  warning  'useEffect' is defined but never used  @typescript-eslint/no-unused-vars
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/screens/HoyScreen.tsx
+   29:3   warning  'EditSessionModal' is defined but never used  @typescript-eslint/no-unused-vars
+   34:25  warning  'RADIUS' is defined but never used            @typescript-eslint/no-unused-vars
+  337:61  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  355:43  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/services/database/DatabaseService.ts
+  256:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  266:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  276:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  283:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  297:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  337:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  338:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  339:56  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  340:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  365:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  419:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  433:54  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  453:61  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  480:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  502:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  524:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  540:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  541:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  550:66  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  558:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  579:87  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  581:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/services/pdf/PDFService.ts
+   12:36  warning  '/data/data/com.termux/files/home/WTracker-V2.0.0/src/types/contracts.ts' imported multiple times  import/no-duplicates
+   13:29  warning  '/data/data/com.termux/files/home/WTracker-V2.0.0/src/types/contracts.ts' imported multiple times  import/no-duplicates
+  501:51  warning  Unexpected any. Specify a different type                                                           @typescript-eslint/no-explicit-any
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/services/settings/SettingsService.ts
+  35:7  warning  'DEFAULT_DESTINATION_LIMIT' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/services/toast/ToastService.tsx
+  25:11  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+/data/data/com.termux/files/home/WTracker-V2.0.0/src/types/contracts.ts
+  314:65  warning  Unexpected any. Specify a different type                          @typescript-eslint/no-explicit-any
+  317:18  error    An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+✖ 53 problems (2 errors, 51 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+
+~/WTracker-V2.0.0 $ npm run typecheck
+npm notice run w-tracker@2.0.0 typecheck
+npm notice run tsc --noEmit
+src/components/atoms/IntegrityBadge.tsx:26:3 - error TS2322: Type '"refresh-cw"' is not assignable to type '"map-pin" | "clock" | "history" | "file-text" | "settings" | "navigation" | "moon" | "briefcase" | "coffee" | "car" | "user" | "mail" | "percent" | "search" | "play" | "stop" | ... 8 more ... | "pencil"'.
+
+26   RECOVERED: 'refresh-cw',
+     ~~~~~~~~~
+
+src/components/organisms/SessionTimeline.tsx:22:7 - error TS2740: Type '{ idle: "moon"; pending: "clock"; active: "check-circle"; warning: "alert-triangle"; error: "close"; closed: "stop"; }' is missing the following properties from type 'Record<PillStatus, "map-pin" | "clock" | "history" | "file-text" | "settings" | "navigation" | "moon" | "briefcase" | "coffee" | "car" | "user" | "mail" | "percent" | ... 11 more ... | "pencil">': lunch, transit, SUCCESS, WARNING, and 5 more.
+
+22 const STATUS_ICONS: Record<PillStatus, IconName> = {
+         ~~~~~~~~~~~~
+
+src/components/organisms/SessionTimeline.tsx:31:7 - error TS2740: Type '{ idle: "#455A64"; pending: "#EAB308"; active: "#2E7D32"; warning: "#F57C00"; error: "#C62828"; closed: "#C5A059"; }' is missing the following properties from type 'Record<PillStatus, string>': lunch, transit, SUCCESS, WARNING, and 5 more.
+
+31 const STATUS_COLORS: Record<PillStatus, string> = {
+         ~~~~~~~~~~~~~
+
+src/navigation/AppNavigator.tsx:78:7 - error TS2741: Property 'Resumen' is missing in type 'Readonly<{ Hoy: "navigation"; Historial: "history"; Reportes: "file-text"; Ajustes: "settings"; }>' but required in type 'Readonly<Record<keyof RootTabParamList, "map-pin" | "clock" | "history" | "file-text" | "settings" | "navigation" | "moon" | "briefcase" | "coffee" | "car" | "user" | ... 13 more ... | "pencil">>'.
+
+78 const TAB_ICONS: Readonly<
+         ~~~~~~~~~
+
+src/navigation/AppNavigator.tsx:87:7 - error TS2741: Property 'Resumen' is missing in type 'Readonly<{ Hoy: "HOY"; Historial: "HISTORIAL"; Reportes: "REPORTES"; Ajustes: "AJUSTES"; }>' but required in type 'Readonly<Record<keyof RootTabParamList, string>>'.
+
+87 const TAB_LABELS: Readonly<
+         ~~~~~~~~~~
+
+src/screens/AjustesScreen.tsx:40:7 - error TS2741: Property 'adminPin' is missing in type '{ name: string; hourlyRate: number; reportEmail: string; baseWorkHour: string; overtimeMultiplier: number; lunchDiscountMinutes: number; geofenceRadius: number; dailyReminder: true; workdayAlerts: true; ... 5 more ...; hasCompletedOnboarding: false; }' but required in type 'UserSettings'.
+
+40 const DEFAULT_SETTINGS: UserSettings = {
+         ~~~~~~~~~~~~~~~~
+
+  src/types/contracts.ts:230:3
+    230   adminPin: string | null;
+          ~~~~~~~~
+    'adminPin' is declared here.
+
+src/screens/HoyScreen.tsx:279:28 - error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+279         await closeSession(payload.minutes);
+                               ~~~~~~~~~~~~~~~
+
+src/screens/ReportesScreen.tsx:217:46 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+217       await PDFService.sendByEmail(filePath, settings.reportEmail);
+                                                 ~~~~~~~~~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:312:9 - error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+312         latitude: coordinates.lat,
+            ~~~~~~~~
+
+  src/types/contracts.ts:295:3
+    295   latitude: number;
+          ~~~~~~~~
+    The expected type comes from property 'latitude' which is declared here on type 'GeofenceConfig'
+
+src/services/geofence/GeofenceService.ts:313:9 - error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+313         longitude: coordinates.lng,
+            ~~~~~~~~~
+
+  src/types/contracts.ts:296:3
+    296   longitude: number;
+          ~~~~~~~~~
+    The expected type comes from property 'longitude' which is declared here on type 'GeofenceConfig'
+
+src/services/geofence/GeofenceService.ts:466:29 - error TS2304: Cannot find name 'radiusMeters'.
+
+466       isOutside: distance > radiusMeters,
+                                ~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:469:7 - error TS18004: No value exists in scope for the shorthand property 'radiusMeters'. Either declare one or provide an initializer.
+
+469       radiusMeters,
+          ~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:578:46 - error TS18048: 'coordinates.lat' is possibly 'undefined'.
+
+578     if (!Number.isFinite(coordinates.lat) || coordinates.lat < -90 || coordinates.lat > 90) {
+                                                 ~~~~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:578:71 - error TS18048: 'coordinates.lat' is possibly 'undefined'.
+
+578     if (!Number.isFinite(coordinates.lat) || coordinates.lat < -90 || coordinates.lat > 90) {
+                                                                          ~~~~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:582:46 - error TS18048: 'coordinates.lng' is possibly 'undefined'.
+
+582     if (!Number.isFinite(coordinates.lng) || coordinates.lng < -180 || coordinates.lng > 180) {
+                                                 ~~~~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:582:72 - error TS18048: 'coordinates.lng' is possibly 'undefined'.
+
+582     if (!Number.isFinite(coordinates.lng) || coordinates.lng < -180 || coordinates.lng > 180) {
+                                                                           ~~~~~~~~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:590:42 - error TS18048: 'to.lat' is possibly 'undefined'.
+
+590     const deltaLatitude = this.toRadians(to.lat - from.lat);
+                                             ~~~~~~
+
+src/services/geofence/GeofenceService.ts:590:51 - error TS18048: 'from.lat' is possibly 'undefined'.
+
+590     const deltaLatitude = this.toRadians(to.lat - from.lat);
+                                                      ~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:591:43 - error TS18048: 'to.lng' is possibly 'undefined'.
+
+591     const deltaLongitude = this.toRadians(to.lng - from.lng);
+                                              ~~~~~~
+
+src/services/geofence/GeofenceService.ts:591:52 - error TS18048: 'from.lng' is possibly 'undefined'.
+
+591     const deltaLongitude = this.toRadians(to.lng - from.lng);
+                                                       ~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:593:41 - error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+593     const fromLatitude = this.toRadians(from.lat);
+                                            ~~~~~~~~
+
+src/services/geofence/GeofenceService.ts:594:39 - error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+594     const toLatitude = this.toRadians(to.lat);
+                                          ~~~~~~
+
+src/services/pdf/PDFService.ts:23:7 - error TS2420: Class 'PDFServiceImpl' incorrectly implements interface 'IPDFService'.
+  Property 'generateReport' is missing in type 'PDFServiceImpl' but required in type 'IPDFService'.
+
+23 class PDFServiceImpl implements IPDFService {
+         ~~~~~~~~~~~~~~
+
+  src/types/contracts.ts:358:3
+    358   generateReport(sessions: WorkDay[], weekStart: string, weekEnd: string): Promise<PDFReport>;
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    'generateReport' is declared here.
+
+src/services/pdf/PDFService.ts:291:52 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+291       <div class="period-label">${this._escapeHtml(report.periodLabel)}</div>
+                                                       ~~~~~~~~~~~~~~~~~~
+
+src/services/pdf/PDFService.ts:300:40 - error TS18048: 'summary' is possibly 'undefined'.
+
+300       <div class="value">${formatHours(summary.totalHours ?? 0)}</div>
+                                           ~~~~~~~
+
+src/services/pdf/PDFService.ts:304:40 - error TS18048: 'summary' is possibly 'undefined'.
+
+304       <div class="value">${formatHours(summary.overtimeHours ?? 0)}</div>
+                                           ~~~~~~~
+
+src/services/pdf/PDFService.ts:308:28 - error TS18048: 'summary' is possibly 'undefined'.
+
+308       <div class="value">${summary.sessionCount ?? 0}</div>
+                               ~~~~~~~
+
+src/services/pdf/PDFService.ts:312:54 - error TS18048: 'summary' is possibly 'undefined'.
+
+312       <div class="value value-gold">${formatCurrency(summary.totalEarnings ?? 0)}</div>
+                                                         ~~~~~~~
+
+src/services/pdf/PDFService.ts:329:40 - error TS18048: 'summary' is possibly 'undefined'.
+
+329         <td>${formatHours(Math.max(0, (summary.totalHours ?? 0) - (summary.overtimeHours ?? 0)))}</td>
+                                           ~~~~~~~
+
+src/services/pdf/PDFService.ts:329:68 - error TS18048: 'summary' is possibly 'undefined'.
+
+329         <td>${formatHours(Math.max(0, (summary.totalHours ?? 0) - (summary.overtimeHours ?? 0)))}</td>
+                                                                       ~~~~~~~
+
+src/services/pdf/PDFService.ts:330:30 - error TS18048: 'summary' is possibly 'undefined'.
+
+330         <td>${formatCurrency(summary.baseRate ?? 20)}/h</td>
+                                 ~~~~~~~
+
+src/services/pdf/PDFService.ts:332:30 - error TS18048: 'summary' is possibly 'undefined'.
+
+332         <td>${formatCurrency(summary.baseEarnings ?? 0)}</td>
+                                 ~~~~~~~
+
+src/services/pdf/PDFService.ts:336:27 - error TS18048: 'summary' is possibly 'undefined'.
+
+336         <td>${formatHours(summary.overtimeHours ?? 0)}</td>
+                              ~~~~~~~
+
+src/services/pdf/PDFService.ts:337:30 - error TS18048: 'summary' is possibly 'undefined'.
+
+337         <td>${formatCurrency(summary.baseRate ?? 20)}/h</td>
+                                 ~~~~~~~
+
+src/services/pdf/PDFService.ts:338:16 - error TS18048: 'summary' is possibly 'undefined'.
+
+338         <td>x${summary.overtimeMultiplier ?? 1.5}</td>
+                   ~~~~~~~
+
+src/services/pdf/PDFService.ts:339:30 - error TS18048: 'summary' is possibly 'undefined'.
+
+339         <td>${formatCurrency(summary.overtimeEarnings ?? 0)}</td>
+                                 ~~~~~~~
+
+src/services/pdf/PDFService.ts:343:27 - error TS18048: 'summary' is possibly 'undefined'.
+
+343         <td>${formatHours(summary.totalHours ?? 0)}</td>
+                              ~~~~~~~
+
+src/services/pdf/PDFService.ts:345:71 - error TS18048: 'summary' is possibly 'undefined'.
+
+345         <td style="color: #b2853c; font-size: 14px;">${formatCurrency(summary.totalEarnings ?? 0)}</td>
+                                                                          ~~~~~~~
+
+src/services/pdf/PDFService.ts:479:11 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+479           time: v.enterTime,
+              ~~~~
+
+  src/services/pdf/PDFService.ts:17:3
+    17   time: string;
+         ~~~~
+    The expected type comes from property 'time' which is declared here on type 'TimelineEvent'
+
+src/services/pdf/PDFService.ts:482:63 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+482           relativeMinutes: this._getRelativeMinutes(baseTime, v.enterTime),
+                                                                  ~~~~~~~~~~~
+
+src/services/pdf/PDFService.ts:489:15 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+489               v.enterTime,
+                  ~~~~~~~~~~~
+
+src/services/sessionEngine/SessionEngineService.ts:213:7 - error TS2322: Type 'Coordinates | null' is not assignable to type '{ lat: number; lng: number; } | null'.
+  Type 'Coordinates' is not assignable to type '{ lat: number; lng: number; }'.
+    Types of property 'lat' are incompatible.
+      Type 'number | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+
+213       coordinates = await geofenceService.geocodeAddress(
+          ~~~~~~~~~~~
+
+src/services/sessionEngine/SessionEngineService.ts:223:7 - error TS2322: Type 'Coordinates | null' is not assignable to type '{ lat: number; lng: number; } | null'.
+
+223       coordinates =
+          ~~~~~~~~~~~
+
+src/services/sessionEngine/SessionEngineService.ts:717:13 - error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+717             latitude: coordinates.lat,
+                ~~~~~~~~
+
+  src/types/contracts.ts:295:3
+    295   latitude: number;
+          ~~~~~~~~
+    The expected type comes from property 'latitude' which is declared here on type 'GeofenceConfig'
+
+src/services/sessionEngine/SessionEngineService.ts:718:13 - error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+
+718             longitude: coordinates.lng,
+                ~~~~~~~~~
+
+  src/types/contracts.ts:296:3
+    296   longitude: number;
+          ~~~~~~~~~
+    The expected type comes from property 'longitude' which is declared here on type 'GeofenceConfig'
+
+src/services/sessionEngine/SessionEngineService.ts:1119:13 - error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+  Type 'null' is not assignable to type 'number | undefined'.
+
+1119             lat: session._lat,
+                 ~~~
+
+  src/types/contracts.ts:282:3
+    282   lat?: number;
+          ~~~
+    The expected type comes from property 'lat' which is declared here on type 'Coordinates'
+
+src/services/sessionEngine/SessionEngineService.ts:1120:13 - error TS2322: Type 'number | null' is not assignable to type 'number | undefined'.
+
+1120             lng: session._lng,
+                 ~~~
+
+  src/types/contracts.ts:283:3
+    283   lng?: number;
+          ~~~
+    The expected type comes from property 'lng' which is declared here on type 'Coordinates'
+
+src/services/sessionEngine/SessionEngineService.ts:1299:13 - error TS2322: Type 'number | null' is not assignable to type 'number'.
+  Type 'null' is not assignable to type 'number'.
+
+1299             latitude: recovered._lat,
+                 ~~~~~~~~
+
+  src/types/contracts.ts:295:3
+    295   latitude: number;
+          ~~~~~~~~
+    The expected type comes from property 'latitude' which is declared here on type 'GeofenceConfig'
+
+src/services/sessionEngine/SessionEngineService.ts:1300:13 - error TS2322: Type 'number | null' is not assignable to type 'number'.
+  Type 'null' is not assignable to type 'number'.
+
+1300             longitude: recovered._lng,
+                 ~~~~~~~~~
+
+  src/types/contracts.ts:296:3
+    296   longitude: number;
+          ~~~~~~~~~
+    The expected type comes from property 'longitude' which is declared here on type 'GeofenceConfig'
+
+src/services/sessionEngine/SessionEngineService.ts:1494:11 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+1494           visit.enterTime,
+               ~~~~~~~~~~~~~~~
+
+src/services/sessionEngine/SessionEngineService.ts:1519:9 - error TS2532: Object is possibly 'undefined'.
+
+1519         workBreak.endTime &&
+             ~~~~~~~~~~~~~~~~~~~~
+1520         Number.isFinite(workBreak.durationMinutes)
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ ...
+1524               endTime
+     ~~~~~~~~~~~~~~~~~~~~~
+1525             );
+     ~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:204:9 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'SQLiteBindValue'.
+  Type 'undefined' is not assignable to type 'SQLiteBindValue'.
+
+204         normalizedSettings.name,
+            ~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:216:11 - error TS2345: Argument of type 'boolean | undefined' is not assignable to parameter of type 'boolean'.
+
+216           normalizedSettings.multiDestination
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:219:11 - error TS2345: Argument of type 'boolean | undefined' is not assignable to parameter of type 'boolean'.
+
+219           normalizedSettings.paidTransfers
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:486:5 - error TS2741: Property 'adminPin' is missing in type '{ name: string; hourlyRate: number; reportEmail: string; baseWorkHour: string; overtimeMultiplier: number; lunchDiscountMinutes: number; geofenceRadius: number; dailyReminder: boolean; workdayAlerts: boolean; ... 5 more ...; hasCompletedOnboarding: boolean; }' but required in type 'UserSettings'.
+
+486     return {
+        ~~~~~~
+
+  src/types/contracts.ts:230:3
+    230   adminPin: string | null;
+          ~~~~~~~~
+    'adminPin' is declared here.
+
+src/services/settings/SettingsService.ts:487:13 - error TS18048: 'settings.name' is possibly 'undefined'.
+
+487       name: settings.name.trim(),
+                ~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:491:20 - error TS18048: 'settings.reportEmail' is possibly 'undefined'.
+
+491       reportEmail: settings.reportEmail
+                       ~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:538:5 - error TS2741: Property 'adminPin' is missing in type '{ name: string; hourlyRate: number; reportEmail: string; baseWorkHour: string; overtimeMultiplier: number; lunchDiscountMinutes: number; geofenceRadius: number; dailyReminder: boolean; workdayAlerts: boolean; ... 5 more ...; hasCompletedOnboarding: boolean; }' but required in type 'UserSettings'.
+
+538     return {
+        ~~~~~~
+
+  src/types/contracts.ts:230:3
+    230   adminPin: string | null;
+          ~~~~~~~~
+    'adminPin' is declared here.
+
+src/services/settings/SettingsService.ts:541:9 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+541         DEFAULT_SETTINGS.name
+            ~~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:551:9 - error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+551         DEFAULT_SETTINGS.reportEmail
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:594:9 - error TS2345: Argument of type 'boolean | undefined' is not assignable to parameter of type 'boolean'.
+  Type 'undefined' is not assignable to type 'boolean'.
+
+594         DEFAULT_SETTINGS.multiDestination
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+src/services/settings/SettingsService.ts:599:9 - error TS2345: Argument of type 'boolean | undefined' is not assignable to parameter of type 'boolean'.
+
+599         DEFAULT_SETTINGS.paidTransfers
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Found 62 errors in 10 files.
+
+Errors  Files
+     1  src/components/atoms/IntegrityBadge.tsx:26
+     2  src/components/organisms/SessionTimeline.tsx:22
+     2  src/navigation/AppNavigator.tsx:78
+     1  src/screens/AjustesScreen.tsx:40
+     1  src/screens/HoyScreen.tsx:279
+     1  src/screens/ReportesScreen.tsx:217
+    14  src/services/geofence/GeofenceService.ts:312
+    19  src/services/pdf/PDFService.ts:23
+    10  src/services/sessionEngine/SessionEngineService.ts:213
+    11  src/services/settings/SettingsService.ts:204
+~/WTracker-V2.0.0 $ npm run test
+npm notice run w-tracker@2.0.0 test
+npm notice run jest --watchAll=false
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+In /data/data/com.termux/files/home/WTracker-V2.0.0
+  58 files checked.
+  testMatch: **/__tests__/**/*.[jt]s?(x), **/?(*.)+(spec|test).[tj]s?(x) - 0 matches
+  testPathIgnorePatterns: /node_modules/ - 58 matches
+  testRegex:  - 0 matches
+Pattern:  - 0 matches
