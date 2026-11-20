@@ -5,11 +5,9 @@ import {
 } from "@/services/database/DatabaseService";
 import { geofenceService } from "@/services/geofence/GeofenceService";
 import { settingsService } from "@/services/settings/SettingsService";
-// CORRECCIÓN: Se eliminaron SessionState, Transfer y Break para evitar "is defined but never used"
 import type { Session } from "@/types/contracts";
 
 class PromiseQueue {
-  // CORRECCIÓN: Reemplazado any por unknown
   private queue: (() => Promise<unknown>)[] = [];
   private isProcessing = false;
 
@@ -94,6 +92,22 @@ class SessionEngine {
           now,
         ],
       );
+
+      try {
+        const alreadyInside = await this.geofence.register({
+          identifier: id,
+          radius: settings.geofenceRadius || 100,
+          destination,
+        });
+        if (alreadyInside) {
+          await this.db.runAsync(
+            `UPDATE sessions SET state = 'ACTIVA', start_time = ?, updated_at = ? WHERE id = ?`,
+            [now, now, id],
+          );
+        }
+      } catch (_error) {
+        /* sin permiso o sin geocoding, queda en ESPERANDO con confirmación manual */
+      }
       this.notifyStateChange();
     })) as void;
   }
@@ -103,8 +117,9 @@ class SessionEngine {
       const session = await this.db.getFirstAsync<{
         id: string;
         state: string;
+        destination: string;
       }>(
-        `SELECT id, state FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
+        `SELECT id, state, destination FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
       );
       if (!session) return;
 
@@ -120,6 +135,7 @@ class SessionEngine {
           await this.geofence.register({
             identifier: session.id,
             radius: settings.geofenceRadius || 100,
+            destination: session.destination,
           });
         } catch (_error) {
           /* silence error */
@@ -151,6 +167,7 @@ class SessionEngine {
             await this.geofence.register({
               identifier: session.id,
               radius: settings.geofenceRadius || 100,
+              destination: openTransfer.target_destination,
             });
           } catch (_error) {
             /* silence error */
@@ -237,8 +254,11 @@ class SessionEngine {
 
   async cancelTransfer(): Promise<void> {
     return (await this.queue.enqueue(async () => {
-      const session = await this.db.getFirstAsync<{ id: string }>(
-        `SELECT id FROM sessions WHERE state = 'TRASLADO'`,
+      const session = await this.db.getFirstAsync<{
+        id: string;
+        destination: string;
+      }>(
+        `SELECT id, destination FROM sessions WHERE state = 'TRASLADO'`,
       );
       if (!session) return;
 
@@ -257,6 +277,7 @@ class SessionEngine {
         await this.geofence.register({
           identifier: session.id,
           radius: settings.geofenceRadius || 100,
+          destination: session.destination,
         });
       } catch (_error) {
         /* silence error */
@@ -295,10 +316,30 @@ class SessionEngine {
       if (!session) return;
 
       const now = new Date().toISOString();
-      await this.db.runAsync(
-        `UPDATE breaks SET end_time = ? WHERE session_id = ? AND end_time IS NULL`,
-        [now, session.id],
+      const openBreak = await this.db.getFirstAsync<{
+        id: string;
+        start_time: string;
+      }>(
+        `SELECT id, start_time FROM breaks WHERE session_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1`,
+        [session.id],
       );
+      if (openBreak) {
+        const startMs = Date.parse(openBreak.start_time);
+        const endMs = Date.parse(now);
+        const duration =
+          !Number.isNaN(startMs) && !Number.isNaN(endMs)
+            ? Math.max(0, Math.round((endMs - startMs) / 60000))
+            : 0;
+        await this.db.runAsync(
+          `UPDATE breaks SET end_time = ?, duration_minutes = ? WHERE id = ?`,
+          [now, duration, openBreak.id],
+        );
+      } else {
+        await this.db.runAsync(
+          `UPDATE breaks SET end_time = ? WHERE session_id = ? AND end_time IS NULL`,
+          [now, session.id],
+        );
+      }
       await this.db.runAsync(
         `UPDATE sessions SET state = 'ACTIVA', updated_at = ? WHERE id = ?`,
         [now, session.id],
@@ -333,8 +374,10 @@ class SessionEngine {
       const session = await this.db.getFirstAsync<{
         id: string;
         state: string;
+        start_time: string;
+        snapshot_rate: number;
       }>(
-        `SELECT id, state FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
+        `SELECT id, state, start_time, snapshot_rate FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
       );
       if (!session) return;
 
@@ -355,9 +398,86 @@ class SessionEngine {
         [now, session.id],
       );
 
+      const breaks = await this.db.getAllAsync<{
+        start_time: string;
+        end_time: string | null;
+      }>(
+        `SELECT start_time, end_time FROM breaks WHERE session_id = ?`,
+        [session.id],
+      );
+      let pauseMinutes = 0;
+      for (const b of breaks) {
+        if (b.start_time && b.end_time) {
+          const diff = Math.round(
+            (Date.parse(b.end_time) - Date.parse(b.start_time)) / 60000,
+          );
+          if (Number.isFinite(diff) && diff > 0) pauseMinutes += diff;
+          const dur = Number.isFinite(diff) && diff > 0 ? diff : 0;
+          await this.db.runAsync(
+            `UPDATE breaks SET duration_minutes = ? WHERE session_id = ? AND start_time = ?`,
+            [dur, session.id, b.start_time],
+          );
+        }
+      }
+
+      const transfers = await this.db.getAllAsync<{
+        start_time: string;
+        end_time: string | null;
+      }>(
+        `SELECT start_time, end_time FROM transfers WHERE session_id = ?`,
+        [session.id],
+      );
+      let transferMinutes = 0;
+      for (const t of transfers) {
+        if (t.start_time && t.end_time) {
+          const diff = Math.round(
+            (Date.parse(t.end_time) - Date.parse(t.start_time)) / 60000,
+          );
+          if (Number.isFinite(diff) && diff > 0) transferMinutes += diff;
+        }
+      }
+
+      const startMs = Date.parse(session.start_time);
+      const endMs = Date.parse(now);
+      let totalMinutes = 0;
+      if (!Number.isNaN(startMs) && !Number.isNaN(endMs)) {
+        totalMinutes = Math.round((endMs - startMs) / 60000);
+        if (totalMinutes < 0) totalMinutes = 0;
+      }
+      const netMinutes = Math.max(0, totalMinutes - (lunchDeductedMinutes || 0));
+      const totalHours = Number((netMinutes / 60).toFixed(2));
+
+      let settingsRate: number | undefined;
+      let settingsMultiplier: number | undefined;
+      try {
+        const settings = await settingsService.load();
+        settingsRate = settings.hourlyRate;
+        settingsMultiplier = settings.overtimeMultiplier;
+      } catch (_e) {
+        /* usa snapshot_rate y 1.5 por defecto */
+      }
+      const rate = session.snapshot_rate ?? settingsRate ?? 20;
+      const multiplier = settingsMultiplier ?? 1.5;
+      const overtimeHours = Number(Math.max(0, totalHours - 8).toFixed(2));
+      const baseHours = Math.max(0, totalHours - overtimeHours);
+      const totalEarnings = Number(
+        (baseHours * rate + overtimeHours * rate * multiplier).toFixed(2),
+      );
+
       await this.db.runAsync(
-        `UPDATE sessions SET state = 'CERRADA', end_time = ?, lunch_deducted_minutes = ?, updated_at = ? WHERE id = ?`,
-        [now, lunchDeductedMinutes, now, session.id],
+        `UPDATE sessions SET state = 'CERRADA', end_time = ?, lunch_deducted_minutes = ?, total_hours = ?, total_earnings = ?, overtime_hours = ?, paid_minutes = ?, pause_minutes = ?, transfer_minutes = ?, updated_at = ? WHERE id = ?`,
+        [
+          now,
+          lunchDeductedMinutes,
+          totalHours,
+          totalEarnings,
+          overtimeHours,
+          netMinutes,
+          pauseMinutes,
+          transferMinutes,
+          now,
+          session.id,
+        ],
       );
       this.notifyStateChange();
     })) as void;

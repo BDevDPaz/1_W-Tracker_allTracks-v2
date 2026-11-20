@@ -251,17 +251,29 @@ class PDFServiceImpl implements IPDFService {
 
   private _generateTimeline(session: Session): TimelineEventUI[] {
     const events: TimelineEventUI[] = [];
-    const baseTime = session.startTime;
+    const baseTime = session.createdAt || session.startTime;
 
-    events.push({
-      time: session.startTime,
-      type: "SYSTEM",
-      label: "Inicio de la jornada laboral",
-      relativeMinutes: 0,
-    });
+    if (session.createdAt) {
+      events.push({
+        time: this._formatTime(session.createdAt),
+        type: "SYSTEM",
+        label: "Jornada configurada",
+        relativeMinutes: 0,
+      });
+    }
+
+    if (session.startTime) {
+      events.push({
+        time: this._formatTime(session.startTime),
+        type: "WORK",
+        label: "Llegada al destino",
+        relativeMinutes: this._getRelativeMinutes(baseTime, session.startTime),
+      });
+    }
+
     if (session.endTime) {
       events.push({
-        time: session.endTime,
+        time: this._formatTime(session.endTime),
         type: "SYSTEM",
         label: "Cierre de la jornada laboral",
         relativeMinutes: this._getRelativeMinutes(baseTime, session.endTime),
@@ -271,14 +283,14 @@ class PDFServiceImpl implements IPDFService {
     for (const v of session.visits) {
       const destName = v.alias || v.destination;
       events.push({
-        time: v.enterTime,
+        time: this._formatTime(v.enterTime),
         type: "WORK",
         label: `Check-in en destino: ${destName}`,
         relativeMinutes: this._getRelativeMinutes(baseTime, v.enterTime),
       });
       if (v.exitTime) {
         events.push({
-          time: v.exitTime,
+          time: this._formatTime(v.exitTime),
           type: "WORK",
           label: `Check-out de destino: ${destName} (Duración: ${this._formatMinutesDiff(v.enterTime, v.exitTime)})`,
           relativeMinutes: this._getRelativeMinutes(baseTime, v.exitTime),
@@ -289,14 +301,14 @@ class PDFServiceImpl implements IPDFService {
     for (const t of session.transfers) {
       const dest = t.targetDestination || t.destination || "Destino posterior";
       events.push({
-        time: t.startTime,
+        time: this._formatTime(t.startTime),
         type: "TRANSFER",
         label: `Inicia traslado hacia: ${dest}`,
         relativeMinutes: this._getRelativeMinutes(baseTime, t.startTime),
       });
       if (t.endTime) {
         events.push({
-          time: t.endTime,
+          time: this._formatTime(t.endTime),
           type: "TRANSFER",
           label: `Llegada de traslado (Duración: ${this._formatMinutesDiff(t.startTime, t.endTime)})`,
           relativeMinutes: this._getRelativeMinutes(baseTime, t.endTime),
@@ -306,14 +318,14 @@ class PDFServiceImpl implements IPDFService {
 
     for (const b of session.breaks) {
       events.push({
-        time: b.startTime,
+        time: this._formatTime(b.startTime),
         type: "LUNCH",
         label: "Inicia pausa de almuerzo",
         relativeMinutes: this._getRelativeMinutes(baseTime, b.startTime),
       });
       if (b.endTime) {
         events.push({
-          time: b.endTime,
+          time: this._formatTime(b.endTime),
           type: "LUNCH",
           label: `Termina pausa de almuerzo (Duración: ${b.durationMinutes ?? this._getRelativeMinutes(b.startTime, b.endTime)} min)`,
           relativeMinutes: this._getRelativeMinutes(baseTime, b.endTime),
@@ -326,18 +338,41 @@ class PDFServiceImpl implements IPDFService {
 
   private _getRelativeMinutes(start: string, current: string): number {
     if (!start || !current) return 0;
+    const startMs = Date.parse(start);
+    const currentMs = Date.parse(current);
+    if (!Number.isNaN(startMs) && !Number.isNaN(currentMs)) {
+      const diff = Math.round((currentMs - startMs) / 60000);
+      return diff < 0 ? 0 : diff;
+    }
     const [h1, m1] = start.split(":").map(Number);
     const [h2, m2] = current.split(":").map(Number);
     if (
       h1 === undefined ||
       m1 === undefined ||
       h2 === undefined ||
-      m2 === undefined
+      m2 === undefined ||
+      Number.isNaN(h1) ||
+      Number.isNaN(m1) ||
+      Number.isNaN(h2) ||
+      Number.isNaN(m2)
     )
       return 0;
     let diff = h2 * 60 + m2 - (h1 * 60 + m1);
     if (diff < 0) diff += 1440;
     return diff;
+  }
+
+  private _formatTime(value: string): string {
+    if (!value) return "--:--";
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleTimeString("es-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+    if (value.includes(":")) return value.slice(0, 5);
+    return value;
   }
 
   private _formatDateTime(value: string): string {
@@ -366,6 +401,7 @@ class PDFServiceImpl implements IPDFService {
 
   private _formatMinutesDiff(start: string, end: string): string {
     const diff = this._getRelativeMinutes(start, end);
+    if (!Number.isFinite(diff) || diff < 0) return "0 min";
     const hours = Math.floor(diff / 60);
     const mins = diff % 60;
     return hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
