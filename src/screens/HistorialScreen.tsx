@@ -1,6 +1,6 @@
 import type { NavigationProp } from "@react-navigation/native";
 import { useNavigation } from "@react-navigation/native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -32,6 +32,13 @@ export const HistorialScreen: React.FC = () => {
   useEffect(() => {
     void loadSessions();
   }, []);
+
+  // CORRECCIÓN: Historial solo muestra CERRADA. La activa (ACTIVA / ESPERANDO / TRASLADO / PAUSADA / SALIDA)
+  // se queda en HOY, no se lista aquí con 0.0 h $0.00
+  const closedSessions = useMemo(
+    () => sessions.filter((s) => s.state === "CERRADA"),
+    [sessions],
+  );
 
   // Búsqueda simple en tiempo real
   const handleSearchChange = (text: string) => {
@@ -91,7 +98,7 @@ export const HistorialScreen: React.FC = () => {
       </View>
 
       <FlatList
-        data={sessions}
+        data={closedSessions}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContainer}
