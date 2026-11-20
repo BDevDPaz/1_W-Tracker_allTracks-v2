@@ -129,8 +129,51 @@ export const HoyScreen: React.FC = () => {
     setShowLunchModal(false);
   };
 
-  const earnings = activeSession?.totalEarnings ?? 0;
-  const hours = activeSession?.totalHours ?? 0;
+  // CORRECCIÓN: horas / ingreso en vivo.
+  // Antes: leía activeSession.totalHours, que en DB es 0 hasta cerrar.
+  // Ahora: si el estado es ACTIVA / PAUSADA / TRASLADO / SALIDA, deriva
+  // de elapsedTime (que ya hace tick cada segundo) menos lunch.
+  // ESPERANDO / NO_INICIADA / CERRADA usan el valor guardado.
+  let hours = activeSession?.totalHours ?? 0;
+  let earnings = activeSession?.totalEarnings ?? 0;
+
+  if (
+    activeSession &&
+    (activeSession.state === "ACTIVA" ||
+      activeSession.state === "PAUSADA" ||
+      activeSession.state === "TRASLADO" ||
+      activeSession.state === "SALIDA")
+  ) {
+    const parts = elapsedTime.split(":").map((p) => Number(p) || 0);
+    const totalSeconds =
+      (parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0);
+    let elapsedMinutes = totalSeconds / 60;
+
+    // Fallback si elapsedTime aún es 00:00:00 pero ya hay startTime
+    if (elapsedMinutes <= 0 && activeSession.startTime) {
+      const startMs = Date.parse(activeSession.startTime);
+      if (!Number.isNaN(startMs)) {
+        elapsedMinutes = Math.max(0, (Date.now() - startMs) / 60000);
+      }
+    }
+
+    const netMinutes = Math.max(
+      0,
+      Math.round(elapsedMinutes) - (activeSession.lunchDeductedMinutes || 0),
+    );
+    const liveHours = Number((netMinutes / 60).toFixed(2));
+    const liveOvertime = Number(Math.max(0, liveHours - 8).toFixed(2));
+    const rate = activeSession.snapshotRate || 0;
+    const liveEarnings = Number(
+      (
+        (liveHours - liveOvertime) * rate +
+        liveOvertime * rate * 1.5
+      ).toFixed(2),
+    );
+    hours = liveHours;
+    earnings = liveEarnings;
+  }
+
   const destination =
     activeSession?.alias || activeSession?.destination || null;
 

@@ -88,7 +88,10 @@ interface DBTransferCountRow {
 
 function parseHHMMToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
-  const parts = timeStr.split(":");
+  const timePart = timeStr.includes("T")
+    ? (timeStr.split("T")[1] ?? timeStr)
+    : timeStr;
+  const parts = timePart.split(":");
   const h = parseInt(parts[0] ?? "0", 10);
   const m = parseInt(parts[1] ?? "0", 10);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
@@ -97,9 +100,39 @@ function parseHHMMToMinutes(timeStr: string): number {
 
 function calcDurationMinutes(start: string, end: string | null): number {
   if (!start || !end) return 0;
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isNaN(startMs) && !Number.isNaN(endMs)) {
+    const diff = Math.round((endMs - startMs) / 60000);
+    return diff < 0 ? 0 : diff;
+  }
   let diff = parseHHMMToMinutes(end) - parseHHMMToMinutes(start);
   if (diff < 0) diff += 1440;
   return diff;
+}
+
+function calcTotalHours(
+  startTime: string,
+  endTime: string | null,
+  lunchDeductedMinutes: number,
+): number {
+  if (!startTime || !endTime) return 0;
+  const totalMinutes = calcDurationMinutes(startTime, endTime);
+  const netMinutes = Math.max(0, totalMinutes - (lunchDeductedMinutes || 0));
+  return Number((netMinutes / 60).toFixed(2));
+}
+
+function calcTotalEarnings(
+  totalHours: number,
+  snapshotRate: number,
+  overtimeHours: number,
+  overtimeMultiplier: number,
+): number {
+  const baseHours = Math.max(0, totalHours - (overtimeHours || 0));
+  const base = baseHours * snapshotRate;
+  const overtime =
+    (overtimeHours || 0) * snapshotRate * (overtimeMultiplier || 1.5);
+  return Number((base + overtime).toFixed(2));
 }
 
 interface SQLiteTableColumn {
@@ -278,7 +311,7 @@ export class SessionRepository implements ISessionRepository {
   ): Promise<Session[]> {
     const db = await this.getDatabase();
     let query = "SELECT * FROM sessions WHERE 1=1";
-    const params: SQLite.SQLiteBindValue[] = []; // CORRECCIÓN: Tipado estricto para SQLite en lugar de any[]
+    const params: SQLite.SQLiteBindValue[] = [];
 
     if (startDate && endDate) {
       query += " AND date >= ? AND date <= ?";
@@ -488,15 +521,35 @@ export class SessionRepository implements ISessionRepository {
       transfersSum = 0;
 
     for (const row of rows) {
-      totalHours += row.total_hours;
-      totalEarnings += row.total_earnings;
+      const effectiveHours =
+        row.total_hours > 0
+          ? row.total_hours
+          : calcTotalHours(
+              row.start_time,
+              row.end_time,
+              row.lunch_deducted_minutes,
+            );
+      const effectiveEarnings =
+        row.total_earnings > 0
+          ? row.total_earnings
+          : calcTotalEarnings(
+              effectiveHours,
+              row.snapshot_rate,
+              row.overtime_hours,
+              overtimeMultiplier,
+            );
+      totalHours += effectiveHours;
+      totalEarnings += effectiveEarnings;
       overtimeHours += row.overtime_hours;
-      paidMinutesSum += row.paid_minutes;
+      paidMinutesSum +=
+        row.paid_minutes > 0
+          ? row.paid_minutes
+          : Math.round(effectiveHours * 60);
       if (row.integrity_type === "MANUAL") manualAdjustments++;
 
       const sRate = row.snapshot_rate;
       const sOvertime = row.overtime_hours;
-      const sBaseHours = Math.max(0, row.total_hours - sOvertime);
+      const sBaseHours = Math.max(0, effectiveHours - sOvertime);
 
       baseEarnings += sBaseHours * sRate;
       overtimeEarnings += sOvertime * sRate * overtimeMultiplier;
@@ -609,6 +662,56 @@ export class SessionRepository implements ISessionRepository {
       sequence: e.sequence ?? idx + 1,
       metadata: e.metadata ?? undefined,
     }));
+
+    // CORRECCIÓN: horas en vivo para sesión no cerrada.
+    // CERRADA -> usa lo guardado / calcula con end_time como antes.
+    // ESPERANDO / NO_INICIADA -> 0, todavía no llegó.
+    // ACTIVA / PAUSADA / TRASLADO / SALIDA -> calcula con now, no con 0 de DB.
+    let effectiveTotalHours: number;
+    let effectiveOvertimeHours: number;
+    let effectiveTotalEarnings: number;
+
+    if (row.state === "CERRADA") {
+      effectiveTotalHours =
+        row.total_hours > 0
+          ? row.total_hours
+          : calcTotalHours(
+              row.start_time,
+              row.end_time,
+              row.lunch_deducted_minutes,
+            );
+      effectiveOvertimeHours = row.overtime_hours;
+      effectiveTotalEarnings =
+        row.total_earnings > 0
+          ? row.total_earnings
+          : calcTotalEarnings(
+              effectiveTotalHours,
+              row.snapshot_rate,
+              effectiveOvertimeHours,
+              1.5,
+            );
+    } else if (row.state === "ESPERANDO" || row.state === "NO_INICIADA") {
+      effectiveTotalHours = 0;
+      effectiveOvertimeHours = 0;
+      effectiveTotalEarnings = 0;
+    } else {
+      const nowIso = new Date().toISOString();
+      effectiveTotalHours = calcTotalHours(
+        row.start_time,
+        nowIso,
+        row.lunch_deducted_minutes,
+      );
+      effectiveOvertimeHours = Number(
+        Math.max(0, effectiveTotalHours - 8).toFixed(2),
+      );
+      effectiveTotalEarnings = calcTotalEarnings(
+        effectiveTotalHours,
+        row.snapshot_rate,
+        effectiveOvertimeHours,
+        1.5,
+      );
+    }
+
     return {
       id: row.id,
       date: row.date,
@@ -616,15 +719,18 @@ export class SessionRepository implements ISessionRepository {
       alias: row.alias ?? undefined,
       startTime: row.start_time,
       endTime: row.end_time ?? undefined,
-      totalHours: row.total_hours,
+      totalHours: effectiveTotalHours,
       lunchDeductedMinutes: row.lunch_deducted_minutes,
-      paidMinutes: row.paid_minutes,
+      paidMinutes:
+        row.state === "CERRADA" && row.paid_minutes > 0
+          ? row.paid_minutes
+          : Math.round(effectiveTotalHours * 60),
       pauseMinutes: row.pause_minutes,
       transferMinutes: row.transfer_minutes,
       destinationCount: row.destination_count,
-      overtimeHours: row.overtime_hours,
+      overtimeHours: effectiveOvertimeHours,
       snapshotRate: row.snapshot_rate,
-      totalEarnings: row.total_earnings,
+      totalEarnings: effectiveTotalEarnings,
       integrityType: (row.integrity_type === "GPS"
         ? "VALID"
         : row.integrity_type) as IntegrityType,
