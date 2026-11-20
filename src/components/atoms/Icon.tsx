@@ -21,6 +21,7 @@ type FeatherGlyph = React.ComponentProps<typeof Feather>["name"];
 const FEATHER_FALLBACKS: Record<string, FeatherGlyph> = {
   "shield-check": "shield",
   pencil: "edit-2",
+  history: "clock",
 };
 
 export const Icon: React.FC<IconProps> = ({
