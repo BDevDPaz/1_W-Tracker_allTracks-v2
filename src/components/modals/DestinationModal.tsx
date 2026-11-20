@@ -12,7 +12,7 @@ import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Input } from "@/components/atoms/Input";
 import { Surface } from "@/components/atoms/Surface";
-import { PALETTE, SPACING, FONT, TEXT } from "@/theme";
+import { PALETTE, SPACING, FONT, TEXT, SHADOWS } from "@/theme";
 
 interface DestinationModalProps {
   visible: boolean;
@@ -58,24 +58,26 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
       onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
       >
-        <Surface variant="elevated" style={styles.modalCard}>
-          <View style={styles.header}>
-            <View style={styles.titleContainer}>
-              <Icon name="truck" size={24} color={PALETTE.royalBlue} />
-              <Text style={styles.title}>Iniciar Traslado</Text>
+        <ScrollView
+          contentContainerStyle={styles.overlay}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Surface variant="elevated" radius="hero" style={[styles.modalCard, SHADOWS.hero]}>
+            <View style={styles.header}>
+              <View style={styles.titleContainer}>
+                <Icon name="truck" size={24} color={PALETTE.royalBlue} />
+                <Text style={styles.title}>Iniciar Traslado</Text>
+              </View>
+              <Text style={styles.subtitle}>
+                Registraremos tu movimiento hacia una nueva ubicación.
+              </Text>
             </View>
-            <Text style={styles.subtitle}>
-              Registraremos tu movimiento hacia una nueva ubicación.
-            </Text>
-          </View>
 
-          <ScrollView
-            style={styles.formContainer}
-            keyboardShouldPersistTaps="handled"
-          >
             <Input
               label="Dirección del Nuevo Destino"
               placeholder="Ej: 5320 Newcastle Ave"
@@ -92,34 +94,37 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
               autoCapitalize="words"
               containerStyle={{ marginBottom: 0 }}
             />
-          </ScrollView>
 
-          <View style={styles.actions}>
-            <Button
-              title="Cancelar"
-              variant="outline"
-              onPress={handleClose}
-              disabled={loading}
-              style={styles.flexBtn}
-            />
-            <Button
-              title="Iniciar Traslado"
-              variant="primary"
-              onPress={handleSubmit}
-              loading={loading}
-              disabled={!destination.trim()}
-              style={styles.flexBtn}
-            />
-          </View>
-        </Surface>
+            <View style={styles.actions}>
+              <Button
+                title="Cancelar"
+                variant="outline"
+                onPress={handleClose}
+                disabled={loading}
+                style={styles.flexBtn}
+              />
+              <Button
+                title="Iniciar Traslado"
+                variant="primary"
+                onPress={handleSubmit}
+                loading={loading}
+                disabled={!destination.trim()}
+                style={styles.flexBtn}
+              />
+            </View>
+          </Surface>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  keyboardView: {
     flex: 1,
+  },
+  overlay: {
+    flexGrow: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "flex-end",
   },
@@ -146,9 +151,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: FONT.body.size,
     color: TEXT.secondary,
-  },
-  formContainer: {
-    maxHeight: 300,
   },
   actions: {
     flexDirection: "row",
