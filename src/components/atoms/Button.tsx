@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { PALETTE, RADIUS, SPACING } from "@/theme";
+import { PALETTE, RADIUS, SHADOWS, SPACING } from "@/theme";
 
 interface ButtonProps {
   title: string;
@@ -44,7 +44,7 @@ export const Button: React.FC<ButtonProps> = ({
         return {
           container: {
             backgroundColor: "transparent",
-            borderWidth: 1,
+            borderWidth: 1.2,
             borderColor: PALETTE.mutedGold,
           },
           text: { color: PALETTE.mutedGold },
@@ -61,8 +61,12 @@ export const Button: React.FC<ButtonProps> = ({
       case "primary":
       default:
         return {
-          container: { backgroundColor: PALETTE.mutedGold },
-          text: { color: PALETTE.obsidian, fontWeight: "700" },
+          container: {
+            backgroundColor: PALETTE.mutedGold,
+            borderWidth: 0,
+            ...SHADOWS.goldGlow,
+          },
+          text: { color: PALETTE.obsidian, fontWeight: "800" },
         };
     }
   };
@@ -100,7 +104,7 @@ export const Button: React.FC<ButtonProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
       disabled={disabled || loading}
       style={[
         styles.base,
@@ -139,7 +143,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   text: {
-    fontWeight: "600",
+    fontWeight: "700",
     letterSpacing: 0.5,
   },
 });
