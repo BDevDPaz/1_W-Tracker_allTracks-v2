@@ -7,13 +7,31 @@ const GEOFENCE_TASK_NAME = "BACKGROUND_GEOFENCE_TASK";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
 });
+
+function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   if (error) {
@@ -32,7 +50,6 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       const db = DatabaseService.getDb();
 
       if (eventType === Location.GeofencingEventType.Enter) {
-        // CORRECCIÓN: Tipado de DB Row
         const session = await db.getFirstAsync<{ id: string; state: string }>(
           `SELECT id, state FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
         );
@@ -124,37 +141,129 @@ class GeofenceService {
     return bgStatus === "granted";
   }
 
-  async register({
-    identifier,
-    radius,
-  }: {
-    identifier: string;
-    radius: number;
-  }): Promise<void> {
-    const hasPermissions = (await this.getPermissionStatus()) === "GRANTED";
-    if (!hasPermissions) return;
+  private async resolveDestinationCoords(
+    destination?: string,
+  ): Promise<{ latitude: number; longitude: number } | null> {
+    if (!destination || !destination.trim()) return null;
+    const trimmed = destination.trim();
+    // CORRECCIÓN: solo "principal" es manual.
+    // El alias (ej. Casa Novia) nunca va aquí, va en el campo alias.
+    // El destino siempre debe ser la dirección real para poder geocodificar.
+    if (trimmed.toLowerCase() === "principal") {
+      return null;
+    }
+    try {
+      const results = await Location.geocodeAsync(trimmed);
+      if (results.length > 0) {
+        const first = results[0]!;
+        if (
+          typeof first.latitude === "number" &&
+          typeof first.longitude === "number"
+        ) {
+          return {
+            latitude: first.latitude,
+            longitude: first.longitude,
+          };
+        }
+      }
+    } catch (_e) {
+      /* geocoding falló, se usa fallback y no se auto-activa */
+    }
+    return null;
+  }
 
+  async isAlreadyInside(
+    centerLat: number,
+    centerLng: number,
+    radius: number,
+  ): Promise<boolean> {
     try {
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
+      const distance = haversineMeters(
+        location.coords.latitude,
+        location.coords.longitude,
+        centerLat,
+        centerLng,
+      );
+      return distance <= radius;
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  async register({
+    identifier,
+    radius,
+    destination,
+    latitude,
+    longitude,
+  }: {
+    identifier: string;
+    radius: number;
+    destination?: string;
+    latitude?: number;
+    longitude?: number;
+  }): Promise<boolean> {
+    const hasPermissions = (await this.getPermissionStatus()) === "GRANTED";
+    if (!hasPermissions) return false;
+
+    try {
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      let centerLat: number;
+      let centerLng: number;
+      let centerIsKnown = false;
+
+      if (
+        typeof latitude === "number" &&
+        typeof longitude === "number"
+      ) {
+        centerLat = latitude;
+        centerLng = longitude;
+        centerIsKnown = true;
+      } else {
+        const geocoded = await this.resolveDestinationCoords(destination);
+        if (geocoded) {
+          centerLat = geocoded.latitude;
+          centerLng = geocoded.longitude;
+          centerIsKnown = true;
+        } else {
+          centerLat = current.coords.latitude;
+          centerLng = current.coords.longitude;
+          centerIsKnown = false;
+        }
+      }
 
       await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, [
         {
           identifier,
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
+          latitude: centerLat,
+          longitude: centerLng,
           radius: radius,
           notifyOnEnter: true,
           notifyOnExit: true,
         },
       ]);
+
+      if (!centerIsKnown) return false;
+
+      const distance = haversineMeters(
+        current.coords.latitude,
+        current.coords.longitude,
+        centerLat,
+        centerLng,
+      );
+      return distance <= radius;
     } catch (error) {
       console.error("[Geofence] Error al registrar:", error);
+      return false;
     }
   }
 
-  // CORRECCIÓN: variable prefix con underscore
   async unregister(_identifier: string): Promise<void> {
     try {
       const isRegistered =
