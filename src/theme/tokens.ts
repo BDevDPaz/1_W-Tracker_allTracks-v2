@@ -5,14 +5,17 @@ import type {
 } from "@/types/contracts";
 
 export const PALETTE = {
-  obsidian: "#050505",
+  // Sistema premium de la página: negro #0A0A0C + dorado #D4AF37
+  obsidian: "#0A0A0C",
   graphite: "#121212",
   carbonMist: "#1A1A1A",
   steelLine: "#2A2A2A",
   steelLineLight: "#3A3A3A",
-  mutedGold: "#C5A059",
+  mutedGold: "#D4AF37",
+  mutedGoldLight: "#E8C86A",
   mutedGoldDark: "#9E7E38",
-  mutedGoldTransparent: "rgba(197, 160, 89, 0.12)",
+  mutedGoldTransparent: "rgba(212, 175, 55, 0.12)",
+  mutedGoldTransparentStrong: "rgba(212, 175, 55, 0.18)",
   successGreen: "#2E7D32",
   successGreenBg: "rgba(46, 125, 50, 0.15)",
   royalBlue: "#2563EB",
@@ -38,8 +41,8 @@ export const TEXT = {
 } as const;
 
 export const FONT = {
-  h1: { size: 32, lineHeight: 38, weight: "700" as const, letterSpacing: -0.5 },
-  h2: { size: 24, lineHeight: 30, weight: "700" as const, letterSpacing: -0.3 },
+  h1: { size: 34, lineHeight: 40, weight: "800" as const, letterSpacing: -0.5 },
+  h2: { size: 26, lineHeight: 32, weight: "700" as const, letterSpacing: -0.3 },
   h3: { size: 18, lineHeight: 24, weight: "600" as const, letterSpacing: 0 },
   bodyLarge: {
     size: 16,
@@ -84,13 +87,39 @@ export const SPACING = {
   xxl: 32,
   xxxl: 48,
 } as const;
+
 export const RADIUS = {
   xs: 6,
   sm: 10,
   inputs: 16,
-  cards: 20,
+  cards: 24,
+  hero: 28,
   modals: 28,
   pills: 999,
+} as const;
+
+export const SHADOWS = {
+  card: {
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  hero: {
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  goldGlow: {
+    shadowColor: "#D4AF37",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 6,
+  },
 } as const;
 
 export const STATE_COLORS: Record<SessionState, { main: string; bg: string }> =
@@ -171,8 +200,10 @@ export const COLORS = {
 
 export const ACCENT = {
   primary: PALETTE.mutedGold,
+  light: PALETTE.mutedGoldLight,
   dim: PALETTE.mutedGoldDark,
   soft: PALETTE.mutedGoldTransparent,
+  softStrong: PALETTE.mutedGoldTransparentStrong,
 } as const;
 
 export const STATUS = {
