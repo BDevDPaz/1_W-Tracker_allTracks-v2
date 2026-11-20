@@ -1,9 +1,12 @@
+import * as Crypto from "expo-crypto";
 import { DatabaseService } from "@/services/database/DatabaseService";
 import type { ISettingsService, UserSettings } from "@/types/contracts";
 
 const SETTINGS_ID = "user_settings";
 const LEGACY_SETTINGS_KEY = "user_settings";
 const MINIMUM_GEOFENCE_RADIUS_METERS = 10;
+const PIN_MIN_LENGTH = 4;
+const PIN_MAX_LENGTH = 6;
 
 export const DEFAULT_SETTINGS: Readonly<UserSettings> = Object.freeze({
   name: "",
@@ -27,7 +30,76 @@ export const DEFAULT_SETTINGS: Readonly<UserSettings> = Object.freeze({
   destinationLimit: 5,
   hasCompletedOnboarding: false,
   adminPin: null,
+  // Trabajador
+  phone: "",
+  emergencyContact: "",
+  emergencyPhone: "",
+  preferredStartTime: "06:00",
+  lunchPreferenceMinutes: 30,
+  entryReminderEnabled: true,
+  soundEnabled: true,
+  vibrationEnabled: true,
+  timeFormat: "12h",
+  // Administrador
+  address: "",
+  employeeId: "",
+  company: "",
+  position: "",
+  startDate: "",
+  principalAddress: "",
+  gracePeriodMinutes: 0,
+  entryToleranceMinutes: 0,
+  payDay: "",
+  paymentMethod: "",
+  adminPinHash: null,
+  adminPinSet: false,
+  lastAdminChangeAt: null,
+  lastAdminChangeBy: null,
 });
+
+const WORKER_KEYS: Array<keyof UserSettings> = [
+  "phone",
+  "emergencyContact",
+  "emergencyPhone",
+  "preferredStartTime",
+  "lunchPreferenceMinutes",
+  "entryReminderEnabled",
+  "soundEnabled",
+  "vibrationEnabled",
+  "timeFormat",
+  "language",
+  "dailyReminder",
+  "workdayAlerts",
+  "reportReady",
+];
+
+const ADMIN_KEYS: Array<keyof UserSettings> = [
+  "name",
+  "reportEmail",
+  "address",
+  "employeeId",
+  "company",
+  "position",
+  "startDate",
+  "hourlyRate",
+  "overtimeMultiplier",
+  "baseWorkHour",
+  "overtimeThresholdHours",
+  "lunchDiscountMinutes",
+  "standardLunchMinutes",
+  "paidTransfers",
+  "payTransferTime",
+  "multiDestination",
+  "allowMultiDestination",
+  "geofenceRadius",
+  "destinationLimit",
+  "principalAddress",
+  "gracePeriodMinutes",
+  "entryToleranceMinutes",
+  "payDay",
+  "paymentMethod",
+  "currency",
+];
 
 interface DBSettingsRow {
   id: string;
@@ -37,15 +109,43 @@ interface DBSettingsRow {
   base_work_hour: string | null;
   overtime_multiplier: number | null;
   lunch_discount_minutes: number | null;
+  standard_lunch_minutes: number | null;
+  overtime_threshold_hours: number | null;
   geofence_radius: number | null;
   daily_reminder: number | null;
   workday_alerts: number | null;
   report_ready: number | null;
   language: string | null;
+  currency: string | null;
   multi_destination: number | null;
+  allow_multi_destination: number | null;
   paid_transfers: number | null;
+  pay_transfer_time: number | null;
   destination_limit: number | null;
   has_completed_onboarding: number | null;
+  phone: string | null;
+  emergency_contact: string | null;
+  emergency_phone: string | null;
+  preferred_start_time: string | null;
+  lunch_preference_minutes: number | null;
+  entry_reminder_enabled: number | null;
+  sound_enabled: number | null;
+  vibration_enabled: number | null;
+  time_format: string | null;
+  address: string | null;
+  employee_id: string | null;
+  company: string | null;
+  position: string | null;
+  start_date: string | null;
+  principal_address: string | null;
+  grace_period_minutes: number | null;
+  entry_tolerance_minutes: number | null;
+  pay_day: string | null;
+  payment_method: string | null;
+  admin_pin_hash: string | null;
+  admin_pin_set: number | null;
+  last_admin_change_at: string | null;
+  last_admin_change_by: string | null;
   updated_at: string | null;
 }
 
@@ -87,18 +187,50 @@ export class SettingsService implements ISettingsService {
       await database.runAsync(
         `INSERT INTO settings (
           id, name, hourly_rate, report_email, base_work_hour, overtime_multiplier,
-          lunch_discount_minutes, geofence_radius, daily_reminder, workday_alerts,
-          report_ready, language, multi_destination, paid_transfers, destination_limit,
-          has_completed_onboarding, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          lunch_discount_minutes, standard_lunch_minutes, overtime_threshold_hours,
+          geofence_radius, daily_reminder, workday_alerts,
+          report_ready, language, currency, multi_destination, allow_multi_destination,
+          paid_transfers, pay_transfer_time, destination_limit,
+          has_completed_onboarding, phone, emergency_contact, emergency_phone,
+          preferred_start_time, lunch_preference_minutes, entry_reminder_enabled,
+          sound_enabled, vibration_enabled, time_format,
+          address, employee_id, company, position, start_date, principal_address,
+          grace_period_minutes, entry_tolerance_minutes, pay_day, payment_method,
+          admin_pin_hash, admin_pin_set, last_admin_change_at, last_admin_change_by, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name, hourly_rate = excluded.hourly_rate, report_email = excluded.report_email,
           base_work_hour = excluded.base_work_hour, overtime_multiplier = excluded.overtime_multiplier,
-          lunch_discount_minutes = excluded.lunch_discount_minutes, geofence_radius = excluded.geofence_radius,
+          lunch_discount_minutes = excluded.lunch_discount_minutes,
+          standard_lunch_minutes = excluded.standard_lunch_minutes,
+          overtime_threshold_hours = excluded.overtime_threshold_hours,
+          geofence_radius = excluded.geofence_radius,
           daily_reminder = excluded.daily_reminder, workday_alerts = excluded.workday_alerts,
           report_ready = excluded.report_ready, language = excluded.language,
-          multi_destination = excluded.multi_destination, paid_transfers = excluded.paid_transfers,
-          destination_limit = excluded.destination_limit, has_completed_onboarding = excluded.has_completed_onboarding,
+          currency = excluded.currency,
+          multi_destination = excluded.multi_destination,
+          allow_multi_destination = excluded.allow_multi_destination,
+          paid_transfers = excluded.paid_transfers,
+          pay_transfer_time = excluded.pay_transfer_time,
+          destination_limit = excluded.destination_limit,
+          has_completed_onboarding = excluded.has_completed_onboarding,
+          phone = excluded.phone, emergency_contact = excluded.emergency_contact,
+          emergency_phone = excluded.emergency_phone,
+          preferred_start_time = excluded.preferred_start_time,
+          lunch_preference_minutes = excluded.lunch_preference_minutes,
+          entry_reminder_enabled = excluded.entry_reminder_enabled,
+          sound_enabled = excluded.sound_enabled,
+          vibration_enabled = excluded.vibration_enabled,
+          time_format = excluded.time_format,
+          address = excluded.address, employee_id = excluded.employee_id,
+          company = excluded.company, position = excluded.position,
+          start_date = excluded.start_date, principal_address = excluded.principal_address,
+          grace_period_minutes = excluded.grace_period_minutes,
+          entry_tolerance_minutes = excluded.entry_tolerance_minutes,
+          pay_day = excluded.pay_day, payment_method = excluded.payment_method,
+          admin_pin_hash = excluded.admin_pin_hash, admin_pin_set = excluded.admin_pin_set,
+          last_admin_change_at = excluded.last_admin_change_at,
+          last_admin_change_by = excluded.last_admin_change_by,
           updated_at = excluded.updated_at`,
         [
           SETTINGS_ID,
@@ -108,15 +240,43 @@ export class SettingsService implements ISettingsService {
           normalizedSettings.baseWorkHour,
           normalizedSettings.overtimeMultiplier,
           normalizedSettings.lunchDiscountMinutes,
+          normalizedSettings.standardLunchMinutes ?? 30,
+          normalizedSettings.overtimeThresholdHours ?? 8,
           normalizedSettings.geofenceRadius,
           this.booleanToSQLite(normalizedSettings.dailyReminder),
           this.booleanToSQLite(normalizedSettings.workdayAlerts),
           this.booleanToSQLite(normalizedSettings.reportReady),
           normalizedSettings.language,
+          normalizedSettings.currency ?? "USD",
           this.booleanToSQLite(normalizedSettings.multiDestination),
+          this.booleanToSQLite(normalizedSettings.allowMultiDestination ?? false),
           this.booleanToSQLite(normalizedSettings.paidTransfers),
+          this.booleanToSQLite(normalizedSettings.payTransferTime ?? true),
           normalizedSettings.destinationLimit,
           this.booleanToSQLite(normalizedSettings.hasCompletedOnboarding),
+          normalizedSettings.phone ?? "",
+          normalizedSettings.emergencyContact ?? "",
+          normalizedSettings.emergencyPhone ?? "",
+          normalizedSettings.preferredStartTime ?? "06:00",
+          normalizedSettings.lunchPreferenceMinutes ?? 30,
+          this.booleanToSQLite(normalizedSettings.entryReminderEnabled ?? true),
+          this.booleanToSQLite(normalizedSettings.soundEnabled ?? true),
+          this.booleanToSQLite(normalizedSettings.vibrationEnabled ?? true),
+          normalizedSettings.timeFormat ?? "12h",
+          normalizedSettings.address ?? "",
+          normalizedSettings.employeeId ?? "",
+          normalizedSettings.company ?? "",
+          normalizedSettings.position ?? "",
+          normalizedSettings.startDate ?? "",
+          normalizedSettings.principalAddress ?? "",
+          normalizedSettings.gracePeriodMinutes ?? 0,
+          normalizedSettings.entryToleranceMinutes ?? 0,
+          normalizedSettings.payDay ?? "",
+          normalizedSettings.paymentMethod ?? "",
+          normalizedSettings.adminPinHash ?? null,
+          this.booleanToSQLite(normalizedSettings.adminPinSet ?? false),
+          normalizedSettings.lastAdminChangeAt ?? null,
+          normalizedSettings.lastAdminChangeBy ?? null,
           updatedAt,
         ],
       );
@@ -144,6 +304,74 @@ export class SettingsService implements ISettingsService {
     this.loadPromise = null;
   }
 
+  // --- PIN Admin ---
+
+  async hasAdminPin(): Promise<boolean> {
+    const settings = await this.load();
+    return Boolean(settings.adminPinHash) || settings.adminPinSet === true;
+  }
+
+  async verifyAdminPin(pin: string): Promise<boolean> {
+    const settings = await this.load();
+    if (!settings.adminPinHash) return false;
+    if (!this.isValidPinFormat(pin)) return false;
+    const hash = await this.hashPin(pin);
+    return hash === settings.adminPinHash;
+  }
+
+  async setAdminPin(pin: string): Promise<void> {
+    if (!this.isValidPinFormat(pin))
+      throw new Error("El PIN debe ser de 4 a 6 dígitos.");
+    const current = await this.load();
+    const hash = await this.hashPin(pin);
+    const next: UserSettings = {
+      ...current,
+      adminPin: null,
+      adminPinHash: hash,
+      adminPinSet: true,
+      lastAdminChangeAt: new Date().toISOString(),
+      lastAdminChangeBy: "admin",
+    };
+    await this.save(next);
+  }
+
+  async changeAdminPin(oldPin: string, newPin: string): Promise<void> {
+    const isValid = await this.verifyAdminPin(oldPin);
+    if (!isValid) throw new Error("PIN actual incorrecto.");
+    await this.setAdminPin(newPin);
+  }
+
+  // --- Guardados separados ---
+
+  async saveWorkerSettings(patch: Partial<UserSettings>): Promise<void> {
+    const current = await this.load();
+    const filtered: Partial<UserSettings> = {};
+    for (const key of WORKER_KEYS) {
+      if (patch[key] !== undefined) {
+        (filtered as Record<string, unknown>)[key] = patch[key];
+      }
+    }
+    const next: UserSettings = { ...current, ...filtered };
+    await this.save(next);
+  }
+
+  async saveAdminSettings(patch: Partial<UserSettings>): Promise<void> {
+    const current = await this.load();
+    const filtered: Partial<UserSettings> = {};
+    for (const key of ADMIN_KEYS) {
+      if (patch[key] !== undefined) {
+        (filtered as Record<string, unknown>)[key] = patch[key];
+      }
+    }
+    const next: UserSettings = {
+      ...current,
+      ...filtered,
+      lastAdminChangeAt: new Date().toISOString(),
+      lastAdminChangeBy: "admin",
+    };
+    await this.save(next);
+  }
+
   private async loadInternal(): Promise<UserSettings> {
     try {
       const database = DatabaseService.getDb();
@@ -161,8 +389,21 @@ export class SettingsService implements ISettingsService {
 
       const legacySettings = await this.loadLegacySettings();
       if (legacySettings) {
-        const migratedSettings =
+        let migratedSettings =
           this.normalizePersistedSettings(legacySettings);
+        // Migración PIN viejo en texto plano -> hash, nunca se guarda en plano
+        const legacyPin = legacySettings.adminPin;
+        if (
+          typeof legacyPin === "string" &&
+          legacyPin.length >= PIN_MIN_LENGTH &&
+          !migratedSettings.adminPinHash
+        ) {
+          migratedSettings = {
+            ...migratedSettings,
+            adminPinHash: await this.hashPin(legacyPin),
+            adminPinSet: true,
+          };
+        }
         this.validateSettings(migratedSettings);
         try {
           await this.save(migratedSettings);
@@ -223,15 +464,43 @@ export class SettingsService implements ISettingsService {
       baseWorkHour: row.base_work_hour,
       overtimeMultiplier: row.overtime_multiplier,
       lunchDiscountMinutes: row.lunch_discount_minutes,
+      standardLunchMinutes: row.standard_lunch_minutes,
+      overtimeThresholdHours: row.overtime_threshold_hours,
       geofenceRadius: row.geofence_radius,
       dailyReminder: row.daily_reminder,
       workdayAlerts: row.workday_alerts,
       reportReady: row.report_ready,
       language: row.language,
+      currency: row.currency,
       multiDestination: row.multi_destination,
+      allowMultiDestination: row.allow_multi_destination,
       paidTransfers: row.paid_transfers,
+      payTransferTime: row.pay_transfer_time,
       destinationLimit: row.destination_limit,
       hasCompletedOnboarding: row.has_completed_onboarding,
+      phone: row.phone,
+      emergencyContact: row.emergency_contact,
+      emergencyPhone: row.emergency_phone,
+      preferredStartTime: row.preferred_start_time,
+      lunchPreferenceMinutes: row.lunch_preference_minutes,
+      entryReminderEnabled: row.entry_reminder_enabled,
+      soundEnabled: row.sound_enabled,
+      vibrationEnabled: row.vibration_enabled,
+      timeFormat: row.time_format,
+      address: row.address,
+      employeeId: row.employee_id,
+      company: row.company,
+      position: row.position,
+      startDate: row.start_date,
+      principalAddress: row.principal_address,
+      gracePeriodMinutes: row.grace_period_minutes,
+      entryToleranceMinutes: row.entry_tolerance_minutes,
+      payDay: row.pay_day,
+      paymentMethod: row.payment_method,
+      adminPinHash: row.admin_pin_hash,
+      adminPinSet: row.admin_pin_set,
+      lastAdminChangeAt: row.last_admin_change_at,
+      lastAdminChangeBy: row.last_admin_change_by,
     });
   }
 
@@ -243,16 +512,59 @@ export class SettingsService implements ISettingsService {
       baseWorkHour: settings.baseWorkHour.trim(),
       overtimeMultiplier: Number(settings.overtimeMultiplier),
       lunchDiscountMinutes: Number(settings.lunchDiscountMinutes),
+      standardLunchMinutes:
+        settings.standardLunchMinutes != null
+          ? Number(settings.standardLunchMinutes)
+          : 30,
+      overtimeThresholdHours:
+        settings.overtimeThresholdHours != null
+          ? Number(settings.overtimeThresholdHours)
+          : 8,
       geofenceRadius: Number(settings.geofenceRadius),
       dailyReminder: settings.dailyReminder,
       workdayAlerts: settings.workdayAlerts,
       reportReady: settings.reportReady,
       language: settings.language,
+      currency: (settings.currency ?? "USD").trim() || "USD",
       multiDestination: settings.multiDestination,
+      allowMultiDestination: settings.allowMultiDestination ?? false,
       paidTransfers: settings.paidTransfers,
+      payTransferTime: settings.payTransferTime ?? true,
       destinationLimit: Number(settings.destinationLimit),
       hasCompletedOnboarding: settings.hasCompletedOnboarding,
-      adminPin: settings.adminPin,
+      adminPin: null,
+      phone: (settings.phone ?? "").trim(),
+      emergencyContact: (settings.emergencyContact ?? "").trim(),
+      emergencyPhone: (settings.emergencyPhone ?? "").trim(),
+      preferredStartTime: (settings.preferredStartTime ?? "06:00").trim(),
+      lunchPreferenceMinutes:
+        settings.lunchPreferenceMinutes != null
+          ? Number(settings.lunchPreferenceMinutes)
+          : 30,
+      entryReminderEnabled: settings.entryReminderEnabled ?? true,
+      soundEnabled: settings.soundEnabled ?? true,
+      vibrationEnabled: settings.vibrationEnabled ?? true,
+      timeFormat: settings.timeFormat ?? "12h",
+      address: (settings.address ?? "").trim(),
+      employeeId: (settings.employeeId ?? "").trim(),
+      company: (settings.company ?? "").trim(),
+      position: (settings.position ?? "").trim(),
+      startDate: (settings.startDate ?? "").trim(),
+      principalAddress: (settings.principalAddress ?? "").trim(),
+      gracePeriodMinutes:
+        settings.gracePeriodMinutes != null
+          ? Number(settings.gracePeriodMinutes)
+          : 0,
+      entryToleranceMinutes:
+        settings.entryToleranceMinutes != null
+          ? Number(settings.entryToleranceMinutes)
+          : 0,
+      payDay: (settings.payDay ?? "").trim(),
+      paymentMethod: (settings.paymentMethod ?? "").trim(),
+      adminPinHash: settings.adminPinHash ?? null,
+      adminPinSet: settings.adminPinSet ?? false,
+      lastAdminChangeAt: settings.lastAdminChangeAt ?? null,
+      lastAdminChangeBy: settings.lastAdminChangeBy ?? null,
     };
   }
 
@@ -281,6 +593,14 @@ export class SettingsService implements ISettingsService {
         input.lunchDiscountMinutes,
         DEFAULT_SETTINGS.lunchDiscountMinutes,
       ),
+      standardLunchMinutes: this.toInteger(
+        input.standardLunchMinutes,
+        DEFAULT_SETTINGS.standardLunchMinutes ?? 30,
+      ),
+      overtimeThresholdHours: this.toFiniteNumber(
+        input.overtimeThresholdHours,
+        DEFAULT_SETTINGS.overtimeThresholdHours ?? 8,
+      ),
       geofenceRadius: this.toInteger(
         input.geofenceRadius,
         DEFAULT_SETTINGS.geofenceRadius,
@@ -298,13 +618,25 @@ export class SettingsService implements ISettingsService {
         DEFAULT_SETTINGS.reportReady,
       ),
       language: input.language === "en" ? "en" : "es",
+      currency: this.toTrimmedString(
+        input.currency,
+        DEFAULT_SETTINGS.currency ?? "USD",
+      ),
       multiDestination: this.toBoolean(
         input.multiDestination,
         DEFAULT_SETTINGS.multiDestination,
       ),
+      allowMultiDestination: this.toBoolean(
+        input.allowMultiDestination,
+        DEFAULT_SETTINGS.allowMultiDestination ?? false,
+      ),
       paidTransfers: this.toBoolean(
         input.paidTransfers,
         DEFAULT_SETTINGS.paidTransfers,
+      ),
+      payTransferTime: this.toBoolean(
+        input.payTransferTime,
+        DEFAULT_SETTINGS.payTransferTime ?? true,
       ),
       destinationLimit: this.toInteger(
         input.destinationLimit,
@@ -315,6 +647,65 @@ export class SettingsService implements ISettingsService {
         DEFAULT_SETTINGS.hasCompletedOnboarding,
       ),
       adminPin: null,
+      phone: this.toTrimmedString(input.phone, ""),
+      emergencyContact: this.toTrimmedString(input.emergencyContact, ""),
+      emergencyPhone: this.toTrimmedString(input.emergencyPhone, ""),
+      preferredStartTime: this.toTrimmedString(
+        input.preferredStartTime,
+        DEFAULT_SETTINGS.preferredStartTime ?? "06:00",
+      ),
+      lunchPreferenceMinutes: this.toInteger(
+        input.lunchPreferenceMinutes,
+        DEFAULT_SETTINGS.lunchPreferenceMinutes ?? 30,
+      ),
+      entryReminderEnabled: this.toBoolean(
+        input.entryReminderEnabled,
+        DEFAULT_SETTINGS.entryReminderEnabled ?? true,
+      ),
+      soundEnabled: this.toBoolean(
+        input.soundEnabled,
+        DEFAULT_SETTINGS.soundEnabled ?? true,
+      ),
+      vibrationEnabled: this.toBoolean(
+        input.vibrationEnabled,
+        DEFAULT_SETTINGS.vibrationEnabled ?? true,
+      ),
+      timeFormat:
+        input.timeFormat === "24h" || input.timeFormat === "12h"
+          ? input.timeFormat
+          : "12h",
+      address: this.toTrimmedString(input.address, ""),
+      employeeId: this.toTrimmedString(input.employeeId, ""),
+      company: this.toTrimmedString(input.company, ""),
+      position: this.toTrimmedString(input.position, ""),
+      startDate: this.toTrimmedString(input.startDate, ""),
+      principalAddress: this.toTrimmedString(input.principalAddress, ""),
+      gracePeriodMinutes: this.toInteger(
+        input.gracePeriodMinutes,
+        DEFAULT_SETTINGS.gracePeriodMinutes ?? 0,
+      ),
+      entryToleranceMinutes: this.toInteger(
+        input.entryToleranceMinutes,
+        DEFAULT_SETTINGS.entryToleranceMinutes ?? 0,
+      ),
+      payDay: this.toTrimmedString(input.payDay, ""),
+      paymentMethod: this.toTrimmedString(input.paymentMethod, ""),
+      adminPinHash:
+        typeof input.adminPinHash === "string" && input.adminPinHash
+          ? input.adminPinHash
+          : null,
+      adminPinSet: this.toBoolean(
+        input.adminPinSet,
+        Boolean(input.adminPinHash),
+      ),
+      lastAdminChangeAt:
+        typeof input.lastAdminChangeAt === "string"
+          ? input.lastAdminChangeAt
+          : null,
+      lastAdminChangeBy:
+        typeof input.lastAdminChangeBy === "string"
+          ? input.lastAdminChangeBy
+          : null,
     };
   }
 
@@ -336,6 +727,18 @@ export class SettingsService implements ISettingsService {
     )
       throw new Error("Descuento de almuerzo inválido.");
     if (
+      settings.standardLunchMinutes != null &&
+      (!Number.isInteger(settings.standardLunchMinutes) ||
+        settings.standardLunchMinutes < 0)
+    )
+      throw new Error("Almuerzo estándar inválido.");
+    if (
+      settings.overtimeThresholdHours != null &&
+      (!Number.isFinite(settings.overtimeThresholdHours) ||
+        settings.overtimeThresholdHours <= 0)
+    )
+      throw new Error("Umbral de horas extra inválido.");
+    if (
       !Number.isInteger(settings.geofenceRadius) ||
       settings.geofenceRadius < MINIMUM_GEOFENCE_RADIUS_METERS
     )
@@ -345,6 +748,46 @@ export class SettingsService implements ISettingsService {
       settings.destinationLimit <= 0
     )
       throw new Error("Límite de destinos inválido.");
+    if (
+      settings.gracePeriodMinutes != null &&
+      (!Number.isInteger(settings.gracePeriodMinutes) ||
+        settings.gracePeriodMinutes < 0)
+    )
+      throw new Error("Periodo de gracia inválido.");
+    if (
+      settings.entryToleranceMinutes != null &&
+      (!Number.isInteger(settings.entryToleranceMinutes) ||
+        settings.entryToleranceMinutes < 0)
+    )
+      throw new Error("Tolerancia de entrada inválida.");
+    if (
+      settings.preferredStartTime &&
+      !this.isValidTime(settings.preferredStartTime)
+    )
+      throw new Error("Hora de inicio preferida inválida.");
+    if (
+      settings.lunchPreferenceMinutes != null &&
+      (!Number.isInteger(settings.lunchPreferenceMinutes) ||
+        settings.lunchPreferenceMinutes < 0)
+    )
+      throw new Error("Preferencia de almuerzo inválida.");
+    if (
+      settings.timeFormat &&
+      settings.timeFormat !== "12h" &&
+      settings.timeFormat !== "24h"
+    )
+      throw new Error("Formato de hora inválido.");
+  }
+
+  private async hashPin(pin: string): Promise<string> {
+    return await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      pin,
+    );
+  }
+
+  private isValidPinFormat(pin: string): boolean {
+    return new RegExp(`^\\d{${PIN_MIN_LENGTH},${PIN_MAX_LENGTH}}$`).test(pin);
   }
 
   private isValidTime(value: string): boolean {
