@@ -1,523 +1,233 @@
-// ============================================================
-// SCREEN: HoyScreen — Centro de operaciones en tiempo real (CONSOLIDADO V2.0)
-// Versión: 2.0.0 (Workday Tracking Design System)
-// Fuente: Blueprint Pantalla Hoy | Blueprint de Navegación 2.1
-// Ruta: src/screens/HoyScreen.tsx
-// Responsabilidad: Orquesta la sesión activa, los modales operacionales y el dashboard en vivo.
-// ============================================================
-
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { NavigationProp } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
+import React, { useState } from "react";
 import {
-  Alert,
-  SafeAreaView,
+  View,
   ScrollView,
   StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+  SafeAreaView,
+  Platform,
+  Alert,
+} from "react-native";
 
 import {
-  Button,
-  Icon,
-  OperationalHeroCard,
-  SessionTimeline,
-  SummaryBlock,
-  SystemHealthBlock,
-} from '../components';
-import {
+  Header,
+  MetricTile,
+  HeroCard,
+  Timeline,
   DailySetupModal,
-  EditSessionModal,
-  ExitDetectionModal,
   LunchModal,
-} from '../modals';
-import { useSessionStore } from '../stores/sessionStore';
-import { FONT, PALETTE, RADIUS, SPACING, TEXT } from '../theme';
-import { LunchModalPayload, SessionState, TimelineEvent } from '../types';
-import { formatCurrency, formatHours } from '../utils/formatters';
-
-// ── HELPERS DE TIEMPO Y CÁLCULO ─────────────────────────────
-
-const getCurrentTimeHHMM = (): string => {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-};
-
-const calculateElapsedTime = (startTimeStr?: string | null): string => {
-  if (!startTimeStr) return '00:00';
-
-  let startH = 0;
-  let startM = 0;
-
-  if (startTimeStr.includes('T')) {
-    const date = new Date(startTimeStr);
-    if (!isNaN(date.getTime())) {
-      startH = date.getHours();
-      startM = date.getMinutes();
-    }
-  } else {
-    const parts = startTimeStr.split(':');
-    startH = Number(parts[0] ?? 0);
-    startM = Number(parts[1] ?? 0);
-  }
-
-  const now = new Date();
-  const startTotalMinutes = startH * 60 + startM;
-  const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
-
-  let diff = currentTotalMinutes - startTotalMinutes;
-  if (diff < 0) diff += 24 * 60; // Mitigación para cruce de medianoche
-
-  const hh = String(Math.floor(diff / 60)).padStart(2, '0');
-  const mm = String(diff % 60).padStart(2, '0');
-
-  return `${hh}:${mm}`;
-};
-
-// ── COMPONENTE PRINCIPAL (SCREEN) ───────────────────────────
+  DestinationModal,
+  ExitDetectionModal,
+} from "@/components";
+import { useSessionStore } from "@/stores/sessionStore";
+import { PALETTE, SPACING } from "@/theme/tokens";
+import type { UIActionKey } from "@/types/ui";
+import { formatCurrency, formatHours, isToday } from "@/utils/formatters";
+import { getUIState, buildDailyTimeline } from "@/utils/uiMapper";
 
 export const HoyScreen: React.FC = () => {
+  // CORRECCIÓN: Eliminamos el <any> usando Record<string, unknown>
+  const navigation = useNavigation<NavigationProp<Record<string, unknown>>>();
+
   const {
     sessionState,
     activeSession,
+    todaySessions,
+    elapsedTime,
+    systemHealth,
     startSession,
     confirmArrival,
-    validateForegroundExit,
-    closeSession,
+    startLunch,
+    endLunch,
+    startTransfer,
+    cancelTransfer,
+    finishWorkDay,
     confirmExit,
     stayWorking,
     cancelSession,
-    systemHealth,
   } = useSessionStore();
 
-  const scrollRef = useRef<ScrollView | null>(null);
-  const systemHealthY = useRef<number>(0);
+  const ui = getUIState(sessionState);
 
-  const [elapsedTime, setElapsedTime] = useState<string>('00:00');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [loadingText, setLoadingText] = useState<string | undefined>();
+  const sessionsToMap =
+    todaySessions.length > 0
+      ? todaySessions
+      : activeSession
+        ? [activeSession]
+        : [];
+  const timelineEvents = buildDailyTimeline(sessionsToMap);
 
-  // Estados de Modales
-  const [showDailySetupModal, setShowDailySetupModal] = useState<boolean>(false);
-  const [showLunchModal, setShowLunchModal] = useState<boolean>(false);
-  const [showExitDetectionModal, setShowExitDetectionModal] = useState<boolean>(false);
-  const [exitDetectedTime, setExitDetectedTime] = useState<string>('00:00');
+  const [showDailySetup, setShowDailySetup] = useState(false);
+  const [showLunchModal, setShowLunchModal] = useState(false);
+  const [showDestinationModal, setShowDestinationModal] = useState(false);
 
-  // ── SINCRO DE TEMPORIZADOR EN TIEMPO REAL ─────────────────
-
-  useEffect(() => {
-    const isRunning =
-      sessionState === 'TRASLADO' ||
-      sessionState === 'ACTIVA' ||
-      sessionState === 'PAUSADA' ||
-      sessionState === 'SALIDA';
-
-    if (!isRunning || !activeSession?.startTime) {
-      setElapsedTime('00:00');
-      return;
-    }
-
-    const updateTimer = () => {
-      setElapsedTime(calculateElapsedTime(activeSession.startTime));
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 30000);
-
-    return () => clearInterval(interval);
-  }, [sessionState, activeSession?.startTime]);
-
-  // ── VALIDACIÓN DE SALIDA EN FOREGROUND ────────────────────
-
-  useEffect(() => {
-    if (sessionState !== 'ACTIVA') return;
-
-    let isMounted = true;
-    const interval = setInterval(() => {
-      validateForegroundExit().catch((error: unknown) => {
-        if (isMounted) {
-          console.warn('[Foreground Exit Validation Warning]', error);
-        }
-      });
-    }, 60000); // Evalúa cada minuto mientras la app está abierta
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [sessionState, validateForegroundExit]);
-
-  // ── DISPARO AUTOMÁTICO DE MODAL DE SALIDA ─────────────────
-
-  useEffect(() => {
-    if (sessionState === 'SALIDA') {
-      setExitDetectedTime(getCurrentTimeHHMM());
-      setShowExitDetectionModal(true);
-    } else {
-      setShowExitDetectionModal(false);
-    }
-  }, [sessionState]);
-
-  // ── MANEJADORES DE ACCIONES Y NAVEGACIÓN ──────────────────
-
-  const scrollToMonitoring = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      y: Math.max(systemHealthY.current - 24, 0),
-      animated: true,
-    });
-  }, []);
-
-  const requestCancelSession = useCallback(() => {
-    Alert.alert(
-      'Cancelar Jornada',
-      '¿Estás seguro de que deseas cancelar la jornada actual? Esta acción detendrá el monitoreo y no se registrarán horas.',
-      [
-        { text: 'No, mantener', style: 'cancel' },
-        {
-          text: 'Sí, cancelar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              setLoadingText('Cancelando jornada...');
-              await cancelSession();
-            } catch (error) {
-              console.error('[Cancel Session Error]', error);
-              Alert.alert('No se pudo cancelar', 'Intenta nuevamente en unos segundos.');
-            } finally {
-              setLoading(false);
-              setLoadingText(undefined);
-            }
-          },
-        },
-      ]
-    );
-  }, [cancelSession]);
-
-  const handleManualArrival = useCallback(async () => {
-    try {
-      setLoading(true);
-      setLoadingText('Confirmando llegada...');
-      await confirmArrival();
-    } catch (error) {
-      console.error('[Manual Arrival Error]', error);
-      Alert.alert('Error al confirmar llegada', 'Verifica tu conexión a internet o permisos de ubicación.');
-    } finally {
-      setLoading(false);
-      setLoadingText(undefined);
-    }
-  }, [confirmArrival]);
-
-  // ── MAPPING DE ACCIONES PRINCIPALES Y SECUNDARIAS ─────────
-
-  const handlePrimaryAction = useCallback(() => {
-    switch (sessionState) {
-      case 'NO_INICIADA':
-        setShowDailySetupModal(true);
+  const handleUIAction = (actionKey: UIActionKey) => {
+    switch (actionKey) {
+      case "START_SESSION":
+        setShowDailySetup(true);
         break;
-      case 'ESPERANDO':
-      case 'TRASLADO':
-        scrollToMonitoring();
+      case "CONFIRM_ARRIVAL":
+        void confirmArrival();
         break;
-      case 'ACTIVA':
-      case 'PAUSADA':
-        setShowLunchModal(true); // Solicitar descuento de almuerzo antes de cerrar
+      case "CANCEL_SESSION":
+        void cancelSession();
         break;
-      case 'SALIDA':
-        setExitDetectedTime(getCurrentTimeHHMM());
-        setShowExitDetectionModal(true);
+      case "START_TRANSFER":
+        setShowDestinationModal(true);
         break;
-      default:
+      case "CANCEL_TRANSFER":
+        void cancelTransfer();
         break;
-    }
-  }, [sessionState, scrollToMonitoring]);
-
-  const handleSecondaryAction = useCallback(() => {
-    switch (sessionState) {
-      case 'ESPERANDO':
-      case 'TRASLADO':
-        requestCancelSession();
-        break;
-      case 'SALIDA':
-        stayWorking();
-        setShowExitDetectionModal(false);
-        break;
-      default:
-        break;
-    }
-  }, [sessionState, requestCancelSession, stayWorking]);
-
-  // ── MANEJADORES DE MODALES ────────────────────────────────
-
-  const handleConfirmDailySetup = useCallback(
-    async (payload: { destination: string; alias?: string }) => {
-      try {
-        setLoading(true);
-        setLoadingText('Iniciando jornada...');
-        await startSession(payload.destination, payload.alias);
-        setShowDailySetupModal(false);
-      } catch (error) {
-        console.error('[Daily Setup Error]', error);
+      case "FINISH_SESSION":
         Alert.alert(
-          'Fallo al iniciar jornada',
-          'Asegúrate de conceder permisos de ubicación (Siempre) para habilitar el monitoreo.'
+          "Finalizar Jornada",
+          "¿Estás seguro que deseas cerrar la sesión actual y generar la auditoría?",
+          [
+            { text: "Cancelar", style: "cancel" },
+            {
+              text: "Finalizar",
+              style: "destructive",
+              onPress: () => finishWorkDay(0),
+            },
+          ],
         );
-      } finally {
-        setLoading(false);
-        setLoadingText(undefined);
-      }
-    },
-    [startSession]
-  );
-
-  const handleConfirmLunch = useCallback(
-    async (payload: LunchModalPayload) => {
-      try {
-        setLoading(true);
-        setLoadingText('Cerrando jornada...');
-        await closeSession(payload.minutes);
-        setShowLunchModal(false);
-      } catch (error) {
-        console.error('[Lunch Close Error]', error);
-        Alert.alert('No se pudo cerrar la jornada', 'Intenta nuevamente en unos segundos.');
-      } finally {
-        setLoading(false);
-        setLoadingText(undefined);
-      }
-    },
-    [closeSession]
-  );
-
-  const handleConfirmExit = useCallback(async () => {
-    try {
-      setLoading(true);
-      setLoadingText('Confirmando salida y cerrando...');
-      await confirmExit();
-      setShowExitDetectionModal(false);
-    } catch (error) {
-      console.error('[Confirm Exit Error]', error);
-      Alert.alert('No se pudo confirmar la salida', 'Intenta nuevamente en unos segundos.');
-    } finally {
-      setLoading(false);
-      setLoadingText(undefined);
-    }
-  }, [confirmExit]);
-
-  const handleStayWorking = useCallback(() => {
-    stayWorking();
-    setShowExitDetectionModal(false);
-  }, [stayWorking]);
-
-  // ── ESTADOS VISUALES ──────────────────────────────────────
-
-  const orbConfig = useMemo(() => {
-    switch (sessionState as SessionState) {
-      case 'ACTIVA':
-        return { icon: 'briefcase', style: styles.statusOrbActive, color: PALETTE.mutedGold };
-      case 'ESPERANDO':
-      case 'TRASLADO':
-        return { icon: 'map-pin', style: null, color: TEXT.primary };
-      case 'PAUSADA':
-        return { icon: 'coffee', style: styles.statusOrbWarning, color: PALETTE.amberWarning };
-      case 'SALIDA':
-        return { icon: 'alert-triangle', style: styles.statusOrbWarning, color: PALETTE.deepRed };
-      case 'CERRADA':
-        return { icon: 'check-circle', style: null, color: PALETTE.successGreen };
+        break;
+      case "START_LUNCH":
+        void startLunch();
+        break;
+      case "FINISH_LUNCH":
+        void endLunch();
+        break;
+      case "CONFIRM_EXIT":
+        void confirmExit();
+        break;
+      case "STAY_WORKING":
+        stayWorking();
+        break;
+      case "REVIEW_JOURNEY":
+        if (activeSession) {
+          navigation.navigate("Reportes", { sessionId: activeSession.id });
+        }
+        break;
+      case "REVIEW_HISTORY":
+        navigation.navigate("Historial");
+        break;
       default:
-        return { icon: 'moon', style: null, color: TEXT.muted };
+        console.warn("Acción UI no manejada:", actionKey);
+        break;
     }
-  }, [sessionState]);
+  };
 
-  const hoursToday: number = activeSession?.totalHours ?? 0;
-  const earningsToday: number = activeSession?.totalEarnings ?? 0;
-  const overtime: number = activeSession?.overtimeHours ?? 0;
-  
-  // Mapeo seguro de eventos (si no existe timelineEvents en el modelo V2 relacional, se asume arreglo vacío)
-  const timelineEvents: TimelineEvent[] = (activeSession as any)?.timelineEvents ?? [];
+  const handleStartSession = async (destination: string, alias?: string) => {
+    await startSession(destination, alias);
+    setShowDailySetup(false);
+  };
+
+  const handleFinishWorkDay = async (minutes: number) => {
+    await finishWorkDay(minutes);
+    setShowLunchModal(false);
+  };
+
+  const earnings = activeSession?.totalEarnings ?? 0;
+  const hours = activeSession?.totalHours ?? 0;
+  const destination =
+    activeSession?.alias || activeSession?.destination || null;
+
+  const displayDate =
+    activeSession && !isToday(activeSession.date)
+      ? `Turno del ${activeSession.date}`
+      : new Date().toLocaleDateString("es-US", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+        });
+
+  // CORRECCIÓN: Casteo estricto a los tipos que soporta tu componente Header
+  const headerHealthStatus = (
+    systemHealth.geofenceActive === "OK"
+      ? "OK"
+      : systemHealth.locationPermission
+  ) as "OK" | "WARNING" | "ERROR";
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* HEADER */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>W Tracker</Text>
-            <Text style={styles.headerSubtitle}>CONTROL DIARIO OPERATIVO</Text>
-          </View>
+      <Header
+        title="HOY"
+        subtitle={displayDate.toUpperCase()}
+        healthStatus={headerHealthStatus}
+      />
 
-          {/* Status Orb Indicator */}
-          <View style={[styles.statusOrb, orbConfig.style]}>
-            <Icon name={orbConfig.icon as any} size={20} color={orbConfig.color} strokeWidth={2.5} />
-          </View>
-        </View>
-
-        {/* CONTENEDOR HERO DE MÁQUINA DE ESTADOS */}
-        <OperationalHeroCard
-          state={sessionState}
-          session={activeSession}
+      <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
+        <HeroCard
+          ui={ui}
           elapsedTime={elapsedTime}
-          loading={loading}
-          loadingText={loadingText}
-          onPrimaryAction={handlePrimaryAction}
-          onSecondaryAction={handleSecondaryAction}
+          destination={destination}
+          onAction={handleUIAction}
         />
 
-        {/* FALLBACK MANUAL: ESPERANDO LLEGADA (Ideal para Expo Go / Mocking) */}
-        {sessionState === 'ESPERANDO' && (
-          <View style={styles.manualArrivalBlock}>
-            <Button
-              label="Confirmar Llegada Manual"
-              variant="secondary"
-              size="md"
-              onPress={handleManualArrival}
-              loading={loading}
-              loadingText="Confirmando..."
-              iconName="map-pin"
-              fullWidth
-            />
-            <Text style={styles.manualArrivalHint}>
-              Útil si el GPS tarda en calibrarse o el evento ENTER de la geocerca no se emite a tiempo.
-            </Text>
+        {ui.visibility.showHours || ui.visibility.showEarnings ? (
+          <View style={styles.metricsContainer}>
+            {ui.visibility.showHours ? (
+              <MetricTile
+                label="Horas Trabajadas"
+                value={formatHours(hours)}
+                icon="clock"
+              />
+            ) : null}
+            {ui.visibility.showEarnings ? (
+              <MetricTile
+                label="Ingreso Estimado"
+                value={formatCurrency(earnings)}
+                icon="dollar-sign"
+                highlight={earnings > 0}
+              />
+            ) : null}
           </View>
-        )}
+        ) : null}
 
-        {/* MÉTRICAS FINANCIERAS Y DE TIEMPO DEL DÍA */}
-        <SummaryBlock
-          metrics={[
-            {
-              title: 'HORAS',
-              subtitle: 'hoy',
-              value: formatHours(hoursToday),
-            },
-            {
-              title: 'INGRESO',
-              subtitle: 'estimado',
-              value: formatCurrency(earningsToday),
-              accentValue: true,
-            },
-            {
-              title: 'OVERTIME',
-              value: formatHours(overtime),
-              conditional: true,
-            },
-          ]}
-        />
-
-        {/* DIAGNÓSTICO DEL SISTEMA Y GEOFENCE */}
-        <View
-          onLayout={(event) => {
-            systemHealthY.current = event.nativeEvent.layout.y;
-          }}
-        >
-          <SystemHealthBlock health={systemHealth} />
-        </View>
-
-        {/* BITÁCORA Y EVENTOS EN TIEMPO REAL */}
-        <SessionTimeline events={timelineEvents} title="Bitácora de Actividad" />
+        <Timeline events={timelineEvents} />
       </ScrollView>
 
-      {/* ── MODALES OPERACIONALES ── */}
       <DailySetupModal
-        visible={showDailySetupModal}
-        loading={loading}
-        onCancel={() => setShowDailySetupModal(false)}
-        onConfirm={handleConfirmDailySetup}
+        visible={showDailySetup}
+        onClose={() => setShowDailySetup(false)}
+        onSubmit={handleStartSession}
       />
-
       <LunchModal
         visible={showLunchModal}
-        loading={loading}
-        onCancel={() => setShowLunchModal(false)}
-        onConfirm={handleConfirmLunch}
+        defaultMinutes={activeSession?.lunchDeductedMinutes ?? 30}
+        onClose={() => setShowLunchModal(false)}
+        onSubmit={handleFinishWorkDay}
       />
-
+      <DestinationModal
+        visible={showDestinationModal}
+        onClose={() => setShowDestinationModal(false)}
+        onSubmit={async (dest, alias) => {
+          await startTransfer(dest, alias);
+          setShowDestinationModal(false);
+        }}
+      />
       <ExitDetectionModal
-        visible={showExitDetectionModal}
-        loading={loading}
-        exitTime={exitDetectedTime}
-        onConfirmExit={handleConfirmExit}
-        onStayWorking={handleStayWorking}
+        visible={sessionState === "SALIDA"}
+        onConfirmExit={() => void confirmExit()}
+        onStayWorking={stayWorking}
       />
     </SafeAreaView>
   );
 };
 
-// ── ESTILOS ─────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: PALETTE.obsidian,
+    paddingTop: Platform.OS === "android" ? 24 : 0,
   },
-  scrollContent: {
-    paddingBottom: SPACING.xxxl * 2,
-    paddingTop: SPACING.sm,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: SPACING.xl,
-    marginBottom: SPACING.lg,
-    minHeight: 60,
-  },
-  headerTitle: {
-    color: TEXT.primary,
-    fontSize: FONT.h2.size,
-    fontWeight: '700',
-    fontFamily: 'Montserrat',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    color: TEXT.secondary,
-    fontSize: FONT.label.size - 1,
-    fontWeight: '600',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    fontFamily: 'Montserrat',
-    marginTop: 2,
-  },
-  statusOrb: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: PALETTE.carbonMist,
-    borderWidth: 1,
-    borderColor: PALETTE.steelLine,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusOrbActive: {
-    borderColor: PALETTE.mutedGold,
-    shadowColor: PALETTE.mutedGold,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-  },
-  statusOrbWarning: {
-    borderColor: PALETTE.deepRed,
-    shadowColor: PALETTE.deepRed,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-  },
-  manualArrivalBlock: {
-    marginHorizontal: SPACING.xl,
-    marginBottom: SPACING.lg,
-    gap: SPACING.sm,
-  },
-  manualArrivalHint: {
-    color: TEXT.muted,
-    fontSize: FONT.caption.size,
-    fontFamily: 'Montserrat',
-    textAlign: 'center',
-    lineHeight: FONT.caption.lineHeight,
+  scrollContent: { paddingBottom: SPACING.xxxl },
+  metricsContainer: {
+    flexDirection: "row",
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
   },
 });

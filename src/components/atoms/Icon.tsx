@@ -1,64 +1,37 @@
-// ============================================================
-// ATOM: Icon — Motor Vectorial SVG
-// Versión: 2.0.0 (Workday Tracking Design System)
-// Ruta: src/components/atoms/Icon.tsx
-// Dependencia: lucide-react-native
-// Responsabilidad: Wrapper fuertemente tipado para íconos vectoriales.
-// ============================================================
+import { Feather } from "@expo/vector-icons";
+import React from "react";
+import { PALETTE } from "@/theme";
+import type { IconName } from "@/types/ui";
 
-import React from 'react';
-import { StyleProp, ViewStyle } from 'react-native';
-import {
-  MapPin, Clock, History, FileText, Settings, Navigation,
-  Moon, Briefcase, Coffee, Car, User, Mail, Percent, Search,
-  Play, Square, X, AlertTriangle, CheckCircle, ShieldCheck,
-  ChevronRight, ChevronLeft, Unlock, Lock, Pencil
-} from 'lucide-react-native';
-import { TEXT } from '../../theme';
+// 1. Re-exportamos el tipo para no romper los imports de MetricTile, AppNavigator, etc.
+export type { IconName };
 
-// Mapa maestro que convierte kebab-case a componentes de Lucide
-const ICON_MAP = {
-  'map-pin': MapPin,
-  'clock': Clock,
-  'history': History,
-  'file-text': FileText,
-  'settings': Settings,
-  'navigation': Navigation,
-  'moon': Moon,
-  'briefcase': Briefcase,
-  'coffee': Coffee,
-  'car': Car,
-  'user': User,
-  'mail': Mail,
-  'percent': Percent,
-  'search': Search,
-  'play': Play,
-  'stop': Square,
-  'close': X,
-  'alert-triangle': AlertTriangle,
-  'check-circle': CheckCircle,
-  'shield-check': ShieldCheck,
-  'chevron-right': ChevronRight,
-  'chevron-left': ChevronLeft,
-  'unlock': Unlock,
-  'lock': Lock,
-  'pencil': Pencil
-} as const;
-
-export type IconName = keyof typeof ICON_MAP;
-
-export interface IconProps {
+// 2. Añadimos strokeWidth al contrato para satisfacer a AppNavigator
+interface IconProps {
   name: IconName;
   size?: number;
   color?: string;
   strokeWidth?: number;
-  style?: StyleProp<ViewStyle>;
 }
 
-export const Icon: React.FC<IconProps> = React.memo(({
-  name, size = 24, color = TEXT.primary, strokeWidth = 2, style
+type FeatherGlyph = React.ComponentProps<typeof Feather>["name"];
+
+// Nombres de IconName que no existen en Feather -> equivalente real en Feather.
+// Si agregas otro nombre estilo Lucide, agrégalo aquí, no con un cast genérico.
+const FEATHER_FALLBACKS: Record<string, FeatherGlyph> = {
+  "shield-check": "shield",
+  pencil: "edit-2",
+};
+
+export const Icon: React.FC<IconProps> = ({
+  name,
+  size = 24,
+  color = PALETTE.neutralGray,
+  strokeWidth,
 }) => {
-  const LucideIcon = ICON_MAP[name];
-  if (!LucideIcon) return null;
-  return <LucideIcon size={size} color={color} strokeWidth={strokeWidth} style={style as any} />;
-});
+  const featherName = (FEATHER_FALLBACKS[name] ?? name) as FeatherGlyph;
+
+  return (
+    <Feather name={featherName} size={size} color={color} strokeWidth={strokeWidth} />
+  );
+};

@@ -12,17 +12,12 @@
       "resizeMode": "contain",
       "backgroundColor": "#050505"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.bdevdpaz.wtracker",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "fetch"
-        ],
+        "UIBackgroundModes": ["location", "fetch"],
         "NSLocationWhenInUseUsageDescription": "W Tracker requiere acceso a la ubicación para registrar las coordenadas de entrada y salida del sitio de trabajo.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "W Tracker requiere acceso a la ubicación en segundo plano para verificar automáticamente el cumplimiento de la geocerca operativa.",
         "NSLocationAlwaysUsageDescription": "W Tracker utiliza la ubicación en segundo plano para monitorear desplazamientos y traslados remunerados entre destinos."
@@ -54,7 +49,8 @@
           "locationWhenInUsePermission": "W Tracker requiere acceso a la ubicación para registrar las coordenadas operativas.",
           "locationAlwaysAndWhenInUsePermission": "W Tracker requiere monitoreo de ubicación en segundo plano para el control de geocercas.",
           "locationAlwaysPermission": "W Tracker requiere monitoreo de ubicación en segundo plano para el control de geocercas.",
-          "isAndroidBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-font",
@@ -70,10 +66,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "806cc651-5078-4d0f-bea4-c96e24ee7f6a"
+        "projectId": "5288d96f-cf0f-42e5-93c2-b4dbfda16b39"
       }
     },
     "owner": "bdevdpaz"
   }
 }
-

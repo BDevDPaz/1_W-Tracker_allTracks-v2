@@ -1,10 +1,17 @@
-// ============================================================
-// BARREL GENERAL DE COMPONENTES UI V2 (CONSOLIDADO)
-// Versión: 2.0.0 (Workday Tracking Design System)
-// Fuente: Guía Técnica — Arquitectura UI/UX
-// Ruta: src/components/index.ts
-// ============================================================
+export * from "@/components/atoms/Surface";
+export * from "@/components/atoms/Button";
+export * from "@/components/atoms/Pill";
+export * from "@/components/atoms/Input";
+export * from "@/components/atoms/Icon";
 
-export * from './atoms';
-export * from './molecules';
-export * from './organisms';
+export * from "@/components/molecules/Header";
+export * from "@/components/molecules/MetricTile";
+
+export * from "@/components/organisms/HeroCard";
+export * from "@/components/organisms/Timeline";
+
+export * from "@/components/modals/DailySetupModal";
+export * from "@/components/modals/LunchModal";
+export * from "@/components/modals/DestinationModal";
+export * from "@/components/modals/EditSessionModal";
+export * from "@/components/modals/ExitDetectionModal";

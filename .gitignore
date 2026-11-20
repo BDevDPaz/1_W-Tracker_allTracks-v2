@@ -17,3 +17,9 @@ web-build/
 .env
 .env.local
 
+.backups/
+.tools/
+backups/
+*.zip
+Pipeline de Integración Continua.txt
+tools/audit-output/
