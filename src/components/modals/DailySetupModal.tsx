@@ -1,10 +1,18 @@
 import React, { useState } from "react";
-import { Modal, View, Text, StyleSheet } from "react-native";
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+} from "react-native";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Input } from "@/components/atoms/Input";
 import { Surface } from "@/components/atoms/Surface";
-import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
+import { PALETTE, FONT, RADIUS, SHADOWS, SPACING, TEXT } from "@/theme";
 
 interface DailySetupModalProps {
   visible: boolean;
@@ -59,61 +67,78 @@ export const DailySetupModal: React.FC<DailySetupModalProps> = ({
       animationType="fade"
       onRequestClose={handleClose}
     >
-      <View style={styles.overlay}>
-        <Surface variant="elevated" style={styles.content}>
-          <View style={styles.header}>
-            <Icon name="map-pin" size={24} color={PALETTE.mutedGold} />
-            <Text style={styles.title}>Configurar Jornada</Text>
-          </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.overlay}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Surface
+            variant="elevated"
+            radius="hero"
+            style={[styles.content, SHADOWS.hero]}
+          >
+            <View style={styles.header}>
+              <Icon name="map-pin" size={24} color={PALETTE.mutedGold} />
+              <Text style={styles.title}>Configurar Jornada</Text>
+            </View>
 
-          <Text style={styles.description}>
-            Define la ubicación en la que trabajarás hoy para establecer la
-            geocerca.
-          </Text>
+            <Text style={styles.description}>
+              Define la ubicación en la que trabajarás hoy para establecer la
+              geocerca.
+            </Text>
 
-          <Input
-            label="Destino Principal *"
-            placeholder="Ej: 123 Main St, Los Angeles"
-            value={destination}
-            onChangeText={(text) => {
-              setDestination(text);
-              setError(undefined);
-            }}
-            error={error}
-          />
-
-          <Input
-            label="Alias (Opcional)"
-            placeholder="Ej: Casa de los Smith"
-            value={alias}
-            onChangeText={setAlias}
-          />
-
-          <View style={styles.actions}>
-            <Button
-              title="Cancelar"
-              variant="outline"
-              onPress={handleClose}
-              disabled={loading}
-              style={styles.actionButton}
+            <Input
+              label="Destino Principal *"
+              placeholder="Ej: 123 Main St, Los Angeles"
+              value={destination}
+              onChangeText={(text) => {
+                setDestination(text);
+                setError(undefined);
+              }}
+              error={error}
             />
-            <Button
-              title="Iniciar"
-              variant="primary"
-              onPress={handleSubmit}
-              loading={loading}
-              style={styles.actionButton}
+
+            <Input
+              label="Alias (Opcional)"
+              placeholder="Ej: Casa de los Smith"
+              value={alias}
+              onChangeText={setAlias}
             />
-          </View>
-        </Surface>
-      </View>
+
+            <View style={styles.actions}>
+              <Button
+                title="Cancelar"
+                variant="outline"
+                onPress={handleClose}
+                disabled={loading}
+                style={styles.actionButton}
+              />
+              <Button
+                title="Iniciar"
+                variant="primary"
+                onPress={handleSubmit}
+                loading={loading}
+                style={styles.actionButton}
+              />
+            </View>
+          </Surface>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  keyboardView: {
     flex: 1,
+  },
+  overlay: {
+    flexGrow: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     padding: SPACING.xl,
@@ -122,6 +147,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
     width: "100%",
     borderColor: PALETTE.mutedGoldDark,
+    borderRadius: RADIUS.hero,
   },
   header: {
     flexDirection: "row",
@@ -129,7 +155,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginBottom: SPACING.md,
   },
-  title: { fontSize: FONT.h3.size, fontWeight: "700", color: TEXT.primary },
+  title: { fontSize: FONT.h3.size, fontWeight: "800", color: TEXT.primary, letterSpacing: -0.2 },
   description: {
     fontSize: FONT.body.size,
     color: TEXT.secondary,
