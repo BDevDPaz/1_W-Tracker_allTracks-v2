@@ -13,8 +13,8 @@ module.exports = function (api) {
           },
         },
       ],
-      // react-native-reanimated/plugin DEBE ser siempre el último plugin en la lista
-      "react-native-reanimated/plugin",
+      // react-native-worklets/plugin DEBE ser siempre el último plugin en la lista
+      "react-native-worklets/plugin",
     ],
   };
 };
