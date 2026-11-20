@@ -1,1 +1,0 @@
-{"error":"Command failed: npx tsc --listFiles\nnpm notice run w-tracker@2.0.0 npx\nnpm notice run 'tsc' --listFiles\n","stderr":"npm notice run w-tracker@2.0.0 npx\nnpm notice run 'tsc' --listFiles\n"}
