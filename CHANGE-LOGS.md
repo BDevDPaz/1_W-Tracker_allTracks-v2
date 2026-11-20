@@ -1,3 +1,23 @@
+- Rama `chore/upgrade-sdk-54` en commit `547730c`, pusheada.
+- Diseño premium aplicado a sistema base + Hoy + Header + Input.
+
+### changelog_261120_000017 — 1091916
+**design: Header premium con titulo 800 y badge sistema**
+
+- `src/components/molecules/Header.tsx`
+- Título con peso 800 y tracking -0.3.
+- Subtítulo con tracking 0.2.
+- Badge de sistema en forma de píldora 999, punto 6 → 7px, texto con tracking 1.
+- Mantiene `title`, `subtitle`, `healthStatus`.
+
+### changelog_261120_000018 — 547730c
+**design: Input premium con borde dorado al enfocar**
+
+- `src/components/atoms/Input.tsx`
+- Agrega estado `isFocused` para borde dorado `#D4AF37` al enfocar.
+- Fondo `obsidian` → `graphite` para que se sienta como tarjeta.
+- Etiqueta con peso 700 y tracking 1.2.
+- Mantiene `label`, `error`, `containerStyle` + todo `TextInputProps`, y respeta `onFocus` / `onBlur` originales.
 ## Estado final
 
 - Rama `chore/upgrade-sdk-54` en commit `3910f53`, pusheada.
