@@ -1,3 +1,75 @@
+## Estado final
+
+- Rama `chore/upgrade-sdk-54` en commit `3910f53`, pusheada.
+- `git status` limpio.
+- `npx tsc --noEmit` sin errores.
+- PR #1 y PR #2 en Draft, sin merge.
+- Diseño premium aplicado a Hoy: `tokens` + `Surface` + `HeroCard` + `Button` + `Pill` + `Timeline` + `MetricTile`.
+
+---
+
+## Diseño Premium — Sistema #0A0A0C / #D4AF37
+
+### changelog_261120_000010 — e59469c
+**design: aplica sistema premium #0A0A0C / dorado #D4AF37 a tokens**
+
+- `src/theme/tokens.ts`
+- `obsidian` `#050505` → `#0A0A0C`, `mutedGold` `#C5A059` → `#D4AF37`.
+- Agrega `mutedGoldLight #E8C86A` y `mutedGoldTransparentStrong`.
+- `h1` 32 → 34 con peso 800, `h2` 24 → 26.
+- `RADIUS.cards` 20 → 24, nuevo `RADIUS.hero` 28.
+- Nuevo `SHADOWS` con `card`, `hero` y `goldGlow`.
+- Mantiene todos los exports para no romper `Button`, `Surface`, `HeroCard`, `Timeline`.
+
+### changelog_261120_000011 — 573be09
+**design: Surface premium con variante gold y sombras**
+
+- `src/components/atoms/Surface.tsx`
+- Nueva variante `gold` con borde dorado `#D4AF37` y sombra `goldGlow`.
+- `elevated` / `highlight` usan sombra `card`.
+- Mantiene `base | elevated | highlight` para no romper nada.
+
+### changelog_261120_000012 — 12eaba9
+**design: HeroCard premium con sombra hero y timer 48**
+
+- `src/components/organisms/HeroCard.tsx`
+- `Surface` con `radius="hero"` y sombra `hero`.
+- Borde con `ui.theme.color`, ancho 1.2.
+- Timer 44 → 48, peso 800, badge con tracking 1.2.
+- Sin cambio de lógica de `ui` / `onAction`.
+
+### changelog_261120_000013 — 6a7b44b
+**design: Button premium con sombra dorada en primary**
+
+- `src/components/atoms/Button.tsx`
+- `primary` con fondo dorado `#D4AF37`, texto `#0A0A0C` y sombra `goldGlow`.
+- `outline` con borde 1.2 dorado.
+- Mantiene `primary | secondary | outline | danger` y `sm | md | lg`.
+
+### changelog_261120_000014 — 5ddb50a
+**design: Pill premium con tracking y punto 7px**
+
+- `src/components/atoms/Pill.tsx`
+- Padding y tracking premium, punto 6 → 7px, texto peso 800 con tracking 1.2.
+- Mantiene lógica de `state` / `integrityType`.
+
+### changelog_261120_000015 — 779742f
+**design: Timeline premium con linea dorada**
+
+- `src/components/organisms/Timeline.tsx`
+- Línea vertical dorada sutil `mutedGoldTransparentStrong` en vez de gris.
+- Círculo de icono 24 → 28, borde 1.2.
+- Título con peso 800 y hora con tracking 1.
+- Mantiene lógica de `events`.
+
+### changelog_261120_000016 — 3910f53
+**design: MetricTile premium con variante gold**
+
+- `src/components/molecules/MetricTile.tsx`
+- `highlight` ahora usa variante `gold` de `Surface` con sombra `goldGlow`.
+- Valor 18 → 22, peso 800, etiqueta con tracking 1.2.
+- Mantiene `label`, `value`, `icon`, `highlight`.
+
 # W Tracker v2 — CHANGE-LOGS
 
 Repo: BDevDPaz/1_W-Tracker_allTracks-v2
