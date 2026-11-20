@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { Modal, View, Text, StyleSheet } from "react-native";
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+} from "react-native";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Input } from "@/components/atoms/Input";
 import { Surface } from "@/components/atoms/Surface";
-import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
+import { PALETTE, FONT, RADIUS, SHADOWS, SPACING, TEXT } from "@/theme";
 import type { Session } from "@/types/contracts";
 
 interface EditSessionModalProps {
@@ -76,70 +84,87 @@ export const EditSessionModal: React.FC<EditSessionModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <Surface variant="elevated" style={styles.content}>
-          <View style={styles.header}>
-            <Icon name="pencil" size={24} color={PALETTE.neutralGray} />
-            <Text style={styles.title}>Ajuste Manual</Text>
-          </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.overlay}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Surface
+            variant="elevated"
+            radius="hero"
+            style={[styles.content, SHADOWS.hero]}
+          >
+            <View style={styles.header}>
+              <Icon name="pencil" size={24} color={PALETTE.neutralGray} />
+              <Text style={styles.title}>Ajuste Manual</Text>
+            </View>
 
-          <Text style={styles.description}>
-            Cualquier modificación marcará la auditoría forense de esta jornada
-            como "Ajuste Manual".
-          </Text>
+            <Text style={styles.description}>
+              Cualquier modificación marcará la auditoría forense de esta jornada
+              como "Ajuste Manual".
+            </Text>
 
-          <View style={styles.row}>
+            <View style={styles.row}>
+              <Input
+                label="Inicio (HH:MM)"
+                placeholder="08:00"
+                value={startTime}
+                onChangeText={setStartTime}
+                containerStyle={styles.halfInput}
+              />
+              <Input
+                label="Fin (HH:MM)"
+                placeholder="17:00"
+                value={endTime}
+                onChangeText={setEndTime}
+                containerStyle={styles.halfInput}
+              />
+            </View>
+            {error && <Text style={styles.errorText}>{error}</Text>}
+
             <Input
-              label="Inicio (HH:MM)"
-              placeholder="08:00"
-              value={startTime}
-              onChangeText={setStartTime}
-              containerStyle={styles.halfInput}
+              label="Notas / Justificación"
+              placeholder="Razón del ajuste..."
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              style={{ height: 80 }}
             />
-            <Input
-              label="Fin (HH:MM)"
-              placeholder="17:00"
-              value={endTime}
-              onChangeText={setEndTime}
-              containerStyle={styles.halfInput}
-            />
-          </View>
-          {error && <Text style={styles.errorText}>{error}</Text>}
 
-          <Input
-            label="Notas / Justificación"
-            placeholder="Razón del ajuste..."
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            style={{ height: 80 }}
-          />
-
-          <View style={styles.actions}>
-            <Button
-              title="Cancelar"
-              variant="outline"
-              onPress={onClose}
-              disabled={loading}
-              style={styles.actionButton}
-            />
-            <Button
-              title="Aplicar"
-              variant="secondary"
-              onPress={handleSubmit}
-              loading={loading}
-              style={styles.actionButton}
-            />
-          </View>
-        </Surface>
-      </View>
+            <View style={styles.actions}>
+              <Button
+                title="Cancelar"
+                variant="outline"
+                onPress={onClose}
+                disabled={loading}
+                style={styles.actionButton}
+              />
+              <Button
+                title="Aplicar"
+                variant="secondary"
+                onPress={handleSubmit}
+                loading={loading}
+                style={styles.actionButton}
+              />
+            </View>
+          </Surface>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  keyboardView: {
     flex: 1,
+  },
+  overlay: {
+    flexGrow: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     padding: SPACING.xl,
@@ -148,6 +173,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
     width: "100%",
     borderColor: PALETTE.neutralGray,
+    borderRadius: RADIUS.hero,
   },
   header: {
     flexDirection: "row",
@@ -155,7 +181,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginBottom: SPACING.md,
   },
-  title: { fontSize: FONT.h3.size, fontWeight: "700", color: TEXT.primary },
+  title: { fontSize: FONT.h3.size, fontWeight: "800", color: TEXT.primary, letterSpacing: -0.2 },
   description: {
     fontSize: FONT.caption.size,
     color: TEXT.muted,
