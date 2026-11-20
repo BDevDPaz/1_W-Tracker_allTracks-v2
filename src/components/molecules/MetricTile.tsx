@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import type { IconName } from "@/components/atoms/Icon";
 import { Icon } from "@/components/atoms/Icon";
 import { Surface } from "@/components/atoms/Surface";
-import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
+import { PALETTE, FONT, SHADOWS, SPACING, TEXT } from "@/theme";
 
 interface MetricTileProps {
   label: string;
@@ -20,9 +20,9 @@ export const MetricTile: React.FC<MetricTileProps> = ({
 }) => {
   return (
     <Surface
-      variant={highlight ? "highlight" : "base"}
+      variant={highlight ? "gold" : "base"}
       padding="md"
-      style={styles.card}
+      style={[styles.card, highlight && SHADOWS.goldGlow]}
     >
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
@@ -48,18 +48,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
   label: {
     fontSize: FONT.label.size,
     fontWeight: "700",
     color: TEXT.muted,
     textTransform: "uppercase",
+    letterSpacing: 1.2,
   },
   value: {
-    fontSize: FONT.h3.size,
-    fontWeight: "700",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "800",
     color: TEXT.primary,
+    letterSpacing: -0.3,
   },
   goldValue: {
     color: PALETTE.mutedGold,
