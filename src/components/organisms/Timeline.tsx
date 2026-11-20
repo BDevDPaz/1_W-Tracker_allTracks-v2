@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Icon } from "@/components/atoms/Icon";
 import { Surface } from "@/components/atoms/Surface";
-import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
+import { PALETTE, FONT, SHADOWS, SPACING, TEXT } from "@/theme";
 import type { TimelineEventUI } from "@/types/ui";
 
 interface TimelineProps {
@@ -11,7 +11,7 @@ interface TimelineProps {
 
 export const Timeline: React.FC<TimelineProps> = ({ events }) => {
   return (
-    <Surface variant="base" padding="lg" style={styles.container}>
+    <Surface variant="base" padding="lg" style={[styles.container, SHADOWS.card]}>
       <Text style={styles.headerTitle}>Bitácora de la Jornada</Text>
 
       {events.length === 0 ? (
@@ -69,9 +69,10 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: FONT.h3.size,
-    fontWeight: "700",
+    fontWeight: "800",
     color: TEXT.primary,
     marginBottom: SPACING.md,
+    letterSpacing: -0.2,
   },
   emptyText: {
     fontSize: FONT.body.size,
@@ -79,21 +80,21 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   timelineWrapper: { marginTop: SPACING.xs },
-  eventRow: { flexDirection: "row", minHeight: 50 },
+  eventRow: { flexDirection: "row", minHeight: 56 },
   iconColumn: { alignItems: "center", width: 30, marginRight: SPACING.md },
   iconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.2,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
   },
   line: {
-    width: 1,
+    width: 1.5,
     flex: 1,
-    backgroundColor: PALETTE.steelLine,
+    backgroundColor: PALETTE.mutedGoldTransparentStrong,
     marginTop: 4,
     marginBottom: 4,
   },
@@ -104,6 +105,7 @@ const styles = StyleSheet.create({
     color: TEXT.muted,
     marginBottom: 2,
     textTransform: "uppercase",
+    letterSpacing: 1,
   },
   titleText: {
     fontSize: FONT.bodyStrong.size,
