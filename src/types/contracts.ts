@@ -199,6 +199,9 @@ export interface WorkDay {
 
 export type Session = WorkDay;
 
+export type SettingsTab = "worker" | "admin";
+export type TimeFormat = "12h" | "24h";
+
 export interface UserSettings {
   id?: string;
   name: string;
@@ -222,6 +225,90 @@ export interface UserSettings {
   destinationLimit: number;
   hasCompletedOnboarding: boolean;
   adminPin: string | null;
+
+  // --- Trabajador: lo operativo, sin PIN ---
+  phone?: string;
+  emergencyContact?: string;
+  emergencyPhone?: string;
+  preferredStartTime?: string;
+  lunchPreferenceMinutes?: number;
+  entryReminderEnabled?: boolean;
+  soundEnabled?: boolean;
+  vibrationEnabled?: boolean;
+  timeFormat?: TimeFormat;
+
+  // --- Administrador: lo contractual y de control, con PIN ---
+  address?: string;
+  employeeId?: string;
+  company?: string;
+  position?: string;
+  startDate?: string;
+  principalAddress?: string;
+  gracePeriodMinutes?: number;
+  entryToleranceMinutes?: number;
+  payDay?: string;
+  paymentMethod?: string;
+  adminPinHash?: string | null;
+  adminPinSet?: boolean;
+  lastAdminChangeAt?: string | null;
+  lastAdminChangeBy?: string | null;
+}
+
+// Subconjuntos para los dos guardados separados
+export type WorkerSettings = Pick<
+  UserSettings,
+  | "phone"
+  | "emergencyContact"
+  | "emergencyPhone"
+  | "preferredStartTime"
+  | "lunchPreferenceMinutes"
+  | "entryReminderEnabled"
+  | "soundEnabled"
+  | "vibrationEnabled"
+  | "timeFormat"
+  | "language"
+  | "dailyReminder"
+  | "workdayAlerts"
+  | "reportReady"
+>;
+
+export type AdminSettings = Pick<
+  UserSettings,
+  | "name"
+  | "reportEmail"
+  | "address"
+  | "employeeId"
+  | "company"
+  | "position"
+  | "startDate"
+  | "hourlyRate"
+  | "overtimeMultiplier"
+  | "baseWorkHour"
+  | "overtimeThresholdHours"
+  | "lunchDiscountMinutes"
+  | "standardLunchMinutes"
+  | "paidTransfers"
+  | "payTransferTime"
+  | "multiDestination"
+  | "allowMultiDestination"
+  | "geofenceRadius"
+  | "destinationLimit"
+  | "principalAddress"
+  | "gracePeriodMinutes"
+  | "entryToleranceMinutes"
+  | "payDay"
+  | "paymentMethod"
+  | "currency"
+>;
+
+export interface FieldValidationError {
+  field: string;
+  message: string;
+}
+
+export interface SettingsValidationResult {
+  valid: boolean;
+  errors: FieldValidationError[];
 }
 
 export interface SystemHealth {
@@ -341,6 +428,14 @@ export interface ISettingsService {
   load(): Promise<UserSettings>;
   getSettings(): UserSettings;
   save(settings: UserSettings): Promise<void>;
+  // Nuevos métodos, opcionales en este paso para que tsc siga en verde.
+  // En Paso 2 se implementan y se vuelven obligatorios.
+  verifyAdminPin?(pin: string): Promise<boolean>;
+  setAdminPin?(pin: string): Promise<void>;
+  changeAdminPin?(oldPin: string, newPin: string): Promise<void>;
+  hasAdminPin?(): Promise<boolean>;
+  saveWorkerSettings?(patch: Partial<UserSettings>): Promise<void>;
+  saveAdminSettings?(patch: Partial<UserSettings>): Promise<void>;
 }
 
 export interface IPDFService {
