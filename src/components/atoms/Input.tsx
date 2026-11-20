@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import type { TextInputProps, ViewStyle } from "react-native";
 import { TextInput, View, Text, StyleSheet } from "react-native";
 import { PALETTE, RADIUS, SPACING, TEXT, FONT } from "@/theme";
@@ -14,14 +14,31 @@ export const Input: React.FC<InputProps> = ({
   error,
   containerStyle,
   style,
+  onFocus,
+  onBlur,
   ...props
 }) => {
+  const [isFocused, setIsFocused] = useState(false);
+
   return (
     <View style={[styles.wrapper, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TextInput
         placeholderTextColor={TEXT.muted}
-        style={[styles.input, error ? styles.inputError : undefined, style]}
+        onFocus={(e) => {
+          setIsFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setIsFocused(false);
+          onBlur?.(e);
+        }}
+        style={[
+          styles.input,
+          isFocused && styles.inputFocused,
+          error ? styles.inputError : undefined,
+          style,
+        ]}
         {...props}
       />
       {error && <Text style={styles.errorText}>{error}</Text>}
@@ -38,12 +55,12 @@ const styles = StyleSheet.create({
     fontSize: FONT.captionStrong.size,
     color: TEXT.secondary,
     marginBottom: SPACING.xs,
-    fontWeight: "600",
-    letterSpacing: 0.5,
+    fontWeight: "700",
+    letterSpacing: 1.2,
     textTransform: "uppercase",
   },
   input: {
-    backgroundColor: PALETTE.obsidian,
+    backgroundColor: PALETTE.graphite,
     borderWidth: 1,
     borderColor: PALETTE.steelLine,
     borderRadius: RADIUS.inputs,
@@ -52,12 +69,16 @@ const styles = StyleSheet.create({
     color: TEXT.primary,
     fontSize: FONT.body.size,
   },
+  inputFocused: {
+    borderColor: PALETTE.mutedGold,
+    borderWidth: 1.2,
+  },
   inputError: {
     borderColor: PALETTE.deepRed,
   },
   errorText: {
     fontSize: FONT.caption.size,
     color: PALETTE.deepRed,
-    marginTop: SPACING.xxs,
+    marginTop: SPACING.xs,
   },
 });
