@@ -2,9 +2,8 @@ import React from "react";
 import { Modal, View, Text, StyleSheet } from "react-native";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
-import { Input } from "@/components/atoms/Input";
 import { Surface } from "@/components/atoms/Surface";
-import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
+import { PALETTE, FONT, RADIUS, SHADOWS, SPACING, TEXT } from "@/theme";
 
 interface ExitDetectionModalProps {
   visible: boolean;
@@ -22,7 +21,11 @@ export const ExitDetectionModal: React.FC<ExitDetectionModalProps> = ({
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
-        <Surface variant="elevated" style={styles.content}>
+        <Surface
+          variant="elevated"
+          radius="hero"
+          style={[styles.content, SHADOWS.hero]}
+        >
           <View style={styles.iconCircle}>
             <Icon
               name="alert-triangle"
@@ -70,6 +73,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xxl,
     width: "100%",
     borderColor: PALETTE.amberWarning,
+    borderRadius: RADIUS.hero,
     alignItems: "center",
   },
   iconCircle: {
@@ -83,10 +87,11 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: FONT.h2.size,
-    fontWeight: "700",
+    fontWeight: "800",
     color: PALETTE.amberWarning,
     marginBottom: SPACING.sm,
     textAlign: "center",
+    letterSpacing: -0.2,
   },
   description: {
     fontSize: FONT.body.size,
