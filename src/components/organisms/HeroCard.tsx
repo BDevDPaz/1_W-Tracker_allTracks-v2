@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Surface } from "@/components/atoms/Surface";
-import { FONT, SPACING, TEXT } from "@/theme";
+import { FONT, SHADOWS, SPACING, TEXT } from "@/theme";
 import type { UIState, UIActionKey } from "@/types/ui";
 
 // Helper seguro para opacidad en React Native
@@ -36,7 +36,8 @@ export const HeroCard: React.FC<HeroCardProps> = ({
     <Surface
       variant="elevated"
       padding="xl"
-      style={[styles.card, { borderColor: ui.theme.color }]}
+      radius="hero"
+      style={[styles.card, { borderColor: ui.theme.color }, SHADOWS.hero]}
     >
       <View style={styles.header}>
         <View
@@ -108,7 +109,7 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: SPACING.lg,
     marginVertical: SPACING.md,
-    borderWidth: 1,
+    borderWidth: 1.2,
   },
   header: {
     flexDirection: "row",
@@ -121,20 +122,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: SPACING.sm,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 999,
     borderWidth: 1,
     gap: 6,
   },
-  badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
+  badgeText: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2 },
   destinationText: {
     fontSize: FONT.captionStrong.size,
     color: TEXT.secondary,
     fontWeight: "600",
     maxWidth: "45%",
+    textAlign: "right",
   },
-  centerContent: { alignItems: "center", marginVertical: SPACING.md },
+  centerContent: { alignItems: "center", marginVertical: SPACING.lg },
   timerText: {
-    fontSize: 44,
+    fontSize: 48,
     fontWeight: "800",
     fontFamily: "Courier New",
     letterSpacing: 2,
@@ -142,7 +144,7 @@ const styles = StyleSheet.create({
   timerSubtext: {
     fontSize: FONT.caption.size,
     color: TEXT.muted,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
     textAlign: "center",
   },
   staticSubtext: {
