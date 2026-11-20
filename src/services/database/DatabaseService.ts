@@ -193,6 +193,168 @@ async function migrateSettingsTable(db: SQLite.SQLiteDatabase): Promise<void> {
     "has_completed_onboarding",
     "INTEGER NOT NULL DEFAULT 0",
   );
+  // --- Paso 2a: Split Ajustes Trabajador vs Administrador ---
+  // Campos que existían en el tipo pero nunca se persistían
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "standard_lunch_minutes",
+    "INTEGER NOT NULL DEFAULT 30",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "overtime_threshold_hours",
+    "REAL NOT NULL DEFAULT 8",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "currency",
+    "TEXT NOT NULL DEFAULT 'USD'",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "allow_multi_destination",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "pay_transfer_time",
+    "INTEGER NOT NULL DEFAULT 1",
+  );
+  // Trabajador
+  await addColumnIfMissing(db, "settings", "phone", "TEXT NOT NULL DEFAULT ''");
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "emergency_contact",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "emergency_phone",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "preferred_start_time",
+    "TEXT NOT NULL DEFAULT '06:00'",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "lunch_preference_minutes",
+    "INTEGER NOT NULL DEFAULT 30",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "entry_reminder_enabled",
+    "INTEGER NOT NULL DEFAULT 1",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "sound_enabled",
+    "INTEGER NOT NULL DEFAULT 1",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "vibration_enabled",
+    "INTEGER NOT NULL DEFAULT 1",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "time_format",
+    "TEXT NOT NULL DEFAULT '12h'",
+  );
+  // Administrador
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "address",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "employee_id",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "company",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "position",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "start_date",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "principal_address",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "grace_period_minutes",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "entry_tolerance_minutes",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "pay_day",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "payment_method",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await addColumnIfMissing(db, "settings", "admin_pin_hash", "TEXT");
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "admin_pin_set",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "last_admin_change_at",
+    "TEXT",
+  );
+  await addColumnIfMissing(
+    db,
+    "settings",
+    "last_admin_change_by",
+    "TEXT",
+  );
 }
 
 async function migrateIntegrityTypes(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -247,6 +409,34 @@ export const DB_SCHEMA = `
     report_ready INTEGER NOT NULL DEFAULT 1, language TEXT NOT NULL DEFAULT 'es',
     multi_destination INTEGER NOT NULL DEFAULT 0, paid_transfers INTEGER NOT NULL DEFAULT 1,
     destination_limit INTEGER NOT NULL DEFAULT 5, has_completed_onboarding INTEGER NOT NULL DEFAULT 0,
+    standard_lunch_minutes INTEGER NOT NULL DEFAULT 30,
+    overtime_threshold_hours REAL NOT NULL DEFAULT 8,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    allow_multi_destination INTEGER NOT NULL DEFAULT 0,
+    pay_transfer_time INTEGER NOT NULL DEFAULT 1,
+    phone TEXT NOT NULL DEFAULT '',
+    emergency_contact TEXT NOT NULL DEFAULT '',
+    emergency_phone TEXT NOT NULL DEFAULT '',
+    preferred_start_time TEXT NOT NULL DEFAULT '06:00',
+    lunch_preference_minutes INTEGER NOT NULL DEFAULT 30,
+    entry_reminder_enabled INTEGER NOT NULL DEFAULT 1,
+    sound_enabled INTEGER NOT NULL DEFAULT 1,
+    vibration_enabled INTEGER NOT NULL DEFAULT 1,
+    time_format TEXT NOT NULL DEFAULT '12h',
+    address TEXT NOT NULL DEFAULT '',
+    employee_id TEXT NOT NULL DEFAULT '',
+    company TEXT NOT NULL DEFAULT '',
+    position TEXT NOT NULL DEFAULT '',
+    start_date TEXT NOT NULL DEFAULT '',
+    principal_address TEXT NOT NULL DEFAULT '',
+    grace_period_minutes INTEGER NOT NULL DEFAULT 0,
+    entry_tolerance_minutes INTEGER NOT NULL DEFAULT 0,
+    pay_day TEXT NOT NULL DEFAULT '',
+    payment_method TEXT NOT NULL DEFAULT '',
+    admin_pin_hash TEXT,
+    admin_pin_set INTEGER NOT NULL DEFAULT 0,
+    last_admin_change_at TEXT,
+    last_admin_change_by TEXT,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
