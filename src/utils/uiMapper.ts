@@ -357,9 +357,13 @@ export const buildDailyTimeline = (sessions: Session[]): TimelineEventUI[] => {
 
   let dailyEvents: TimelineEventUI[] = [];
 
-  sessions.forEach((session, index) => {
+  sessions.forEach((session) => {
     const sessionEvents = buildTimeline(session);
-    dailyEvents = [...dailyEvents, ...sessionEvents];
+    const uniqueEvents = sessionEvents.map((event) => ({
+      ...event,
+      id: `${session.id}-${event.id}`,
+    }));
+    dailyEvents = [...dailyEvents, ...uniqueEvents];
   });
 
   return dailyEvents;
