@@ -53,11 +53,15 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
         const session = await db.getFirstAsync<{ id: string; state: string }>(
           `SELECT id, state FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
         );
+
+        let shouldNotify = false;
+
         if (session && session.state === "ESPERANDO") {
           await db.runAsync(
             `UPDATE sessions SET state = 'ACTIVA', start_time = ?, updated_at = ? WHERE id = ?`,
             [exactTimestamp, exactTimestamp, session.id],
           );
+          shouldNotify = true;
         } else if (session && session.state === "TRASLADO") {
           const openTransfer = await db.getFirstAsync<{
             id: string;
@@ -80,17 +84,20 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
                 session.id,
               ],
             );
+            shouldNotify = true;
           }
         }
 
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "📍 Check-in Automático",
-            body: "Has llegado a tu destino. Jornada activa.",
-            sound: true,
-          },
-          trigger: null,
-        });
+        if (shouldNotify) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "📍 Check-in Automático",
+              body: "Has llegado a tu destino. Jornada activa.",
+              sound: true,
+            },
+            trigger: null,
+          });
+        }
       } else if (eventType === Location.GeofencingEventType.Exit) {
         const session = await db.getFirstAsync<{ id: string }>(
           `SELECT id FROM sessions WHERE state = 'ACTIVA' ORDER BY created_at DESC LIMIT 1`,
@@ -100,16 +107,16 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
             `UPDATE sessions SET state = 'SALIDA', updated_at = ? WHERE id = ?`,
             [exactTimestamp, session.id],
           );
-        }
 
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "🚧 Salida Detectada",
-            body: "¿Te diriges a otro destino o has finalizado tu jornada?",
-            sound: true,
-          },
-          trigger: null,
-        });
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "🚧 Salida Detectada",
+              body: "¿Te diriges a otro destino o has finalizado tu jornada?",
+              sound: true,
+            },
+            trigger: null,
+          });
+        }
       }
     } catch (dbError) {
       console.error("[GeofenceTask DB Error]:", dbError);

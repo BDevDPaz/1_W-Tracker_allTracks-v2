@@ -6,6 +6,7 @@ import {
 import { geofenceService } from "@/services/geofence/GeofenceService";
 import { settingsService } from "@/services/settings/SettingsService";
 import type { Session } from "@/types/contracts";
+import * as Notifications from "expo-notifications";
 
 class PromiseQueue {
   private queue: (() => Promise<unknown>)[] = [];
@@ -100,11 +101,20 @@ class SessionEngine {
           destination,
         });
         if (alreadyInside) {
-          await this.db.runAsync(
-            `UPDATE sessions SET state = 'ACTIVA', start_time = ?, updated_at = ? WHERE id = ?`,
-            [now, now, id],
-          );
-        }
+         await this.db.runAsync(
+           `UPDATE sessions SET state = 'ACTIVA', start_time = ?, updated_at = ? WHERE id = ?`,
+           [now, now, id],
+         );
+         // Notificación inmediata, no esperar a que el task de fondo dispare tarde
+         await Notifications.scheduleNotificationAsync({
+           content: {
+             title: "📍 Check-in Automático",
+             body: "Has llegado a tu destino. Jornada activa.",
+             sound: true,
+           },
+           trigger: null,
+         }).catch(() => {});
+       }
       } catch (_error) {
         /* sin permiso o sin geocoding, queda en ESPERANDO con confirmación manual */
       }
