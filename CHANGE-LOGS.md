@@ -1,3 +1,55 @@
+- Rama `chore/upgrade-sdk-54` en commit `51ba241`, pusheada.
+- `npx tsc --noEmit` sin errores.
+- PR #1 y PR #2 en Draft, sin merge.
+
+### changelog_261120_000019 — 9e11f5c
+**fix: DailySetupModal — teclado no cubre input**
+
+- `src/components/modals/DailySetupModal.tsx`
+- Fix de teclado para que no tape el input al configurar jornada.
+- Mantiene lógica de `startSession` / destino / alias.
+
+### changelog_261120_000020 — DestinationModal
+**fix: DestinationModal — teclado no cubre input**
+
+- `src/components/modals/DestinationModal.tsx`
+- Fix de teclado para que no tape el input al elegir destino.
+- Mantiene regla: Destino = dirección real geocodificable, Alias = solo etiqueta.
+- Hash no registrado en bitácora, commit aplicado como `DestinationModal` antes de `bac2635`.
+
+### changelog_261120_000021 — bac2635
+**fix: LunchModal — teclado no cubre input**
+
+- `src/components/modals/LunchModal.tsx`
+- Fix de teclado para que no tape el input de minutos de lunch.
+- Mantiene regla: valor de Ajustes es solo default, valor del modal es el valor real del día, una sola deducción.
+
+### changelog_261120_000022 — 3a30ab4
+**fix: EditSessionModal — teclado no cubre input**
+
+- `src/components/modals/EditSessionModal.tsx`
+- Fix de teclado para que no tape el input al editar sesión.
+- Mantiene edición sin romper totales / historial.
+
+### changelog_261120_000023 — 65e79d9
+**fix: ExitDetectionModal — limpieza de import muerto**
+
+- `src/components/modals/ExitDetectionModal.tsx`
+- Elimina import muerto de `Input` que no se usaba.
+- Sin cambio de lógica de salida / traslado / fin de jornada.
+
+### changelog_261120_000024 — 51ba241
+**fix(notifications): check-in inmediato si ya estás adentro, sin duplicado del task de geofence**
+
+- `src/services/sessionEngine/SessionEngineService.ts`
+- `src/services/geofence/GeofenceService.ts`
+- Causa: `startSession` ponía `ACTIVA` a las `1:29` cuando `alreadyInside = true`, pero no notificaba. El task `BACKGROUND_GEOFENCE_TASK` disparaba `Enter` tarde a las `13:33` y notificaba aunque ya estaba `ACTIVA`.
+- Fix en `startSession`: si `alreadyInside`, notifica al momento con `Check-in Automático`.
+- Fix en `GeofenceService`: `Enter` solo notifica si realmente hizo transición de `ESPERANDO` o `TRASLADO` a `ACTIVA` (`shouldNotify`). Si ya estaba `ACTIVA`, no duplica.
+- Fix en `Exit`: solo notifica si sí había sesión `ACTIVA` para pasar a `SALIDA`.
+- Corrige `TS2555` en `runAsync` y `}` extra que dejaba `else if (Exit)` huérfano.
+- `npx tsc --noEmit` limpio.
+
 - Rama `chore/upgrade-sdk-54` en commit `547730c`, pusheada.
 - Diseño premium aplicado a sistema base + Hoy + Header + Input.
 
