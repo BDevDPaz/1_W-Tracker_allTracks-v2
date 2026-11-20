@@ -6,10 +6,10 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  SafeAreaView,
   TouchableOpacity,
   Platform,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header, Input, Surface, Icon } from "@/components";
 import { useSessionStore } from "@/stores/sessionStore";
 import { PALETTE, SPACING, FONT, TEXT } from "@/theme";

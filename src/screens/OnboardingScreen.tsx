@@ -3,10 +3,10 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Platform,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Surface, Button, Input, Icon } from "@/components";
 import { geofenceService, settingsService, ToastService } from "@/services";

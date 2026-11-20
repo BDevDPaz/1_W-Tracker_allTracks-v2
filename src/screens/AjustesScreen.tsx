@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   Platform,
   ScrollView,
   Switch,
   ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Header, Surface, Input, Button, Icon } from "@/components";
 import type { IconName } from "@/components/atoms/Icon";

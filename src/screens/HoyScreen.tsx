@@ -5,10 +5,10 @@ import {
   View,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Platform,
   Alert,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   Header,
