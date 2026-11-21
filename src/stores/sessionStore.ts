@@ -1,9 +1,7 @@
 import { create } from "zustand";
-import {
-  sessionEngineService,
-  geofenceService,
-  settingsService,
-} from "@/services";
+import { sessionEngineService } from "@/services/sessionEngine/SessionEngineService";
+import { geofenceService } from "@/services/geofence/GeofenceService";
+import { settingsService } from "@/services/settings/SettingsService";
 import {
   DatabaseService,
   sessionRepository,
@@ -85,7 +83,9 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           activeSession.updatedAt || Date.now(),
         ).getTime();
         if (Date.now() - exitTime >= 15 * 60 * 1000) {
-          void sessionEngineService.evaluatePendingExits();
+          void sessionEngineService.evaluatePendingExits().catch((error) => {
+            console.error("Error evaluando salidas pendientes en timer:", error);
+          });
         }
       }
 
@@ -112,33 +112,41 @@ export const useSessionStore = create<SessionStore>((set, get) => {
   };
 
   const syncHealth = async () => {
-    const activeSession = get().activeSession;
-    if (
-      !activeSession ||
-      activeSession.state === "NO_INICIADA" ||
-      activeSession.state === "CERRADA"
-    ) {
-      return set({
+    try {
+      const activeSession = get().activeSession;
+      if (
+        !activeSession ||
+        activeSession.state === "NO_INICIADA" ||
+        activeSession.state === "CERRADA"
+      ) {
+        return set({
+          systemHealth: {
+            locationPermission: "OK",
+            backgroundTask: "OK",
+            geofenceActive: "NOT_REQUIRED",
+            dbIntegrity: "OK",
+            lastSync: new Date().toISOString(),
+          },
+        });
+      }
+
+      if (!geofenceService) {
+        throw new Error("geofenceService es undefined en syncHealth. Revisar import directo.");
+      }
+
+      const perm = await geofenceService.getPermissionStatus();
+      set({
         systemHealth: {
-          locationPermission: "OK",
-          backgroundTask: "OK",
-          geofenceActive: "NOT_REQUIRED",
+          locationPermission: perm === "GRANTED" ? "OK" : "ERROR",
+          backgroundTask: perm === "GRANTED" ? "OK" : "ERROR",
+          geofenceActive: activeSession.state === "ACTIVA" ? "OK" : "WARNING",
           dbIntegrity: "OK",
           lastSync: new Date().toISOString(),
         },
       });
+    } catch (error) {
+      console.error("Error en syncHealth:", error);
     }
-
-    const perm = await geofenceService.getPermissionStatus();
-    set({
-      systemHealth: {
-        locationPermission: perm === "GRANTED" ? "OK" : "ERROR",
-        backgroundTask: perm === "GRANTED" ? "OK" : "ERROR",
-        geofenceActive: activeSession.state === "ACTIVA" ? "OK" : "WARNING",
-        dbIntegrity: "OK",
-        lastSync: new Date().toISOString(),
-      },
-    });
   };
 
   return {
@@ -161,7 +169,13 @@ export const useSessionStore = create<SessionStore>((set, get) => {
     historyFilters: { search: "", startDate: null, endDate: null },
 
     initialize: async () => {
+      if (get().isInitialized) return;
       try {
+        if (!sessionEngineService || !settingsService || !geofenceService) {
+          throw new Error(
+            "Servicios no inicializados: sessionEngineService, settingsService o geofenceService es undefined. Revisar imports directos en sessionStore.",
+          );
+        }
         await DatabaseService.initialize();
         await sessionEngineService.evaluatePendingExits();
 
@@ -188,6 +202,9 @@ export const useSessionStore = create<SessionStore>((set, get) => {
 
     completeOnboarding: async () => {
       try {
+        if (!settingsService) {
+          throw new Error("settingsService es undefined en completeOnboarding.");
+        }
         const settings = await settingsService.load();
         await settingsService.save({
           ...settings,
