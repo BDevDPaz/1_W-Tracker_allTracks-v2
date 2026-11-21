@@ -9,6 +9,7 @@ import React, {
   useEffect,
 } from "react";
 import { StyleSheet, Text, Animated, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PALETTE, TEXT, RADIUS } from "@/theme";
 import type { ToastMessage, ToastType, IToastQueue } from "@/types/contracts";
 
@@ -18,6 +19,11 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 let _toastRef: ToastContextValue | null = null;
 let _earlyBuffer: Omit<ToastMessage, "id">[] = [];
+
+// Offset para que el toast quede DEBAJO del header y no tape títulos como AJUSTES.
+// Header ≈ 60px + paddingTop de la pantalla (en Ajustes 64) + respiro.
+// Se suma a insets.top (status bar) para que funcione en S22+ y en iOS.
+const TOAST_TOP_OFFSET = 108;
 
 const TOAST_COLORS: Record<
   ToastType,
@@ -96,6 +102,7 @@ const Toast: React.FC<ToastProps> = ({ message }) => {
 export const ToastProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
+  const insets = useSafeAreaInsets();
   const [current, setCurrent] = useState<ToastMessage | null>(null);
   const queueRef = useRef<ToastMessage[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,7 +158,10 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({
     <ToastContext.Provider value={value}>
       {children}
       {current && (
-        <View style={styles.container} pointerEvents="none">
+        <View
+          style={[styles.container, { top: insets.top + TOAST_TOP_OFFSET }]}
+          pointerEvents="none"
+        >
           <Toast message={current} />
         </View>
       )}
@@ -178,7 +188,8 @@ export const ToastService = {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    top: 60,
+    // top es dinámico: insets.top + TOAST_TOP_OFFSET. No poner top fijo aquí,
+    // un top fijo como 60 tapa el header en Ajustes y en las demás pantallas.
     left: 24,
     right: 24,
     zIndex: 9999,
