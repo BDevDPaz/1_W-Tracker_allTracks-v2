@@ -176,6 +176,45 @@ export class SettingsService implements ISettingsService {
     }
   }
 
+  // --- Lectura fresca sin caché para fondo / TaskManager / Engine ---
+  // No usa cachedSettings, no usa loadPromise, no escribe caché, no llama a save().
+  // Solo lee la fila actual de SQLite. Si no hay fila, devuelve defaults sin guardar.
+  async getFreshSettings(): Promise<UserSettings> {
+    const database = DatabaseService.getDb();
+    const relationalRow = await database.getFirstAsync<DBSettingsRow>(
+      `SELECT * FROM settings WHERE id = ? LIMIT 1`,
+      [SETTINGS_ID],
+    );
+
+    if (relationalRow) {
+      const freshSettings = this.mapFromDatabase(relationalRow);
+      this.validateSettings(freshSettings);
+      return this.cloneSettings(freshSettings);
+    }
+
+    const legacySettings = await this.loadLegacySettings();
+    if (legacySettings) {
+      let migratedSettings =
+        this.normalizePersistedSettings(legacySettings);
+      const legacyPin = legacySettings.adminPin;
+      if (
+        typeof legacyPin === "string" &&
+        legacyPin.length >= PIN_MIN_LENGTH &&
+        !migratedSettings.adminPinHash
+      ) {
+        migratedSettings = {
+          ...migratedSettings,
+          adminPinHash: await this.hashPin(legacyPin),
+          adminPinSet: true,
+        };
+      }
+      this.validateSettings(migratedSettings);
+      return this.cloneSettings(migratedSettings);
+    }
+
+    return this.cloneDefaultSettings();
+  }
+
   async save(settings: UserSettings): Promise<void> {
     const normalizedSettings = this.normalizeSettings(settings);
     this.validateSettings(normalizedSettings);
@@ -197,7 +236,7 @@ export class SettingsService implements ISettingsService {
           address, employee_id, company, position, start_date, principal_address,
           grace_period_minutes, entry_tolerance_minutes, pay_day, payment_method,
           admin_pin_hash, admin_pin_set, last_admin_change_at, last_admin_change_by, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name, hourly_rate = excluded.hourly_rate, report_email = excluded.report_email,
           base_work_hour = excluded.base_work_hour, overtime_multiplier = excluded.overtime_multiplier,
