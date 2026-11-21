@@ -23,9 +23,7 @@ export const DEFAULT_SETTINGS: Readonly<UserSettings> = Object.freeze({
   reportReady: true,
   language: "es",
   currency: "USD",
-  multiDestination: false,
   allowMultiDestination: false,
-  paidTransfers: true,
   payTransferTime: true,
   destinationLimit: 5,
   hasCompletedOnboarding: false,
@@ -87,9 +85,7 @@ const ADMIN_KEYS: Array<keyof UserSettings> = [
   "overtimeThresholdHours",
   "lunchDiscountMinutes",
   "standardLunchMinutes",
-  "paidTransfers",
   "payTransferTime",
-  "multiDestination",
   "allowMultiDestination",
   "geofenceRadius",
   "destinationLimit",
@@ -117,9 +113,7 @@ interface DBSettingsRow {
   report_ready: number | null;
   language: string | null;
   currency: string | null;
-  multi_destination: number | null;
   allow_multi_destination: number | null;
-  paid_transfers: number | null;
   pay_transfer_time: number | null;
   destination_limit: number | null;
   has_completed_onboarding: number | null;
@@ -228,15 +222,15 @@ export class SettingsService implements ISettingsService {
           id, name, hourly_rate, report_email, base_work_hour, overtime_multiplier,
           lunch_discount_minutes, standard_lunch_minutes, overtime_threshold_hours,
           geofence_radius, daily_reminder, workday_alerts,
-          report_ready, language, currency, multi_destination, allow_multi_destination,
-          paid_transfers, pay_transfer_time, destination_limit,
+          report_ready, language, currency, allow_multi_destination,
+          pay_transfer_time, destination_limit,
           has_completed_onboarding, phone, emergency_contact, emergency_phone,
           preferred_start_time, lunch_preference_minutes, entry_reminder_enabled,
           sound_enabled, vibration_enabled, time_format,
           address, employee_id, company, position, start_date, principal_address,
           grace_period_minutes, entry_tolerance_minutes, pay_day, payment_method,
           admin_pin_hash, admin_pin_set, last_admin_change_at, last_admin_change_by, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name, hourly_rate = excluded.hourly_rate, report_email = excluded.report_email,
           base_work_hour = excluded.base_work_hour, overtime_multiplier = excluded.overtime_multiplier,
@@ -247,9 +241,7 @@ export class SettingsService implements ISettingsService {
           daily_reminder = excluded.daily_reminder, workday_alerts = excluded.workday_alerts,
           report_ready = excluded.report_ready, language = excluded.language,
           currency = excluded.currency,
-          multi_destination = excluded.multi_destination,
           allow_multi_destination = excluded.allow_multi_destination,
-          paid_transfers = excluded.paid_transfers,
           pay_transfer_time = excluded.pay_transfer_time,
           destination_limit = excluded.destination_limit,
           has_completed_onboarding = excluded.has_completed_onboarding,
@@ -287,9 +279,7 @@ export class SettingsService implements ISettingsService {
           this.booleanToSQLite(normalizedSettings.reportReady),
           normalizedSettings.language,
           normalizedSettings.currency ?? "USD",
-          this.booleanToSQLite(normalizedSettings.multiDestination),
           this.booleanToSQLite(normalizedSettings.allowMultiDestination ?? false),
-          this.booleanToSQLite(normalizedSettings.paidTransfers),
           this.booleanToSQLite(normalizedSettings.payTransferTime ?? true),
           normalizedSettings.destinationLimit,
           this.booleanToSQLite(normalizedSettings.hasCompletedOnboarding),
@@ -511,9 +501,7 @@ export class SettingsService implements ISettingsService {
       reportReady: row.report_ready,
       language: row.language,
       currency: row.currency,
-      multiDestination: row.multi_destination,
       allowMultiDestination: row.allow_multi_destination,
-      paidTransfers: row.paid_transfers,
       payTransferTime: row.pay_transfer_time,
       destinationLimit: row.destination_limit,
       hasCompletedOnboarding: row.has_completed_onboarding,
@@ -565,9 +553,7 @@ export class SettingsService implements ISettingsService {
       reportReady: settings.reportReady,
       language: settings.language,
       currency: (settings.currency ?? "USD").trim() || "USD",
-      multiDestination: settings.multiDestination,
       allowMultiDestination: settings.allowMultiDestination ?? false,
-      paidTransfers: settings.paidTransfers,
       payTransferTime: settings.payTransferTime ?? true,
       destinationLimit: Number(settings.destinationLimit),
       hasCompletedOnboarding: settings.hasCompletedOnboarding,
@@ -661,17 +647,9 @@ export class SettingsService implements ISettingsService {
         input.currency,
         DEFAULT_SETTINGS.currency ?? "USD",
       ),
-      multiDestination: this.toBoolean(
-        input.multiDestination,
-        DEFAULT_SETTINGS.multiDestination,
-      ),
       allowMultiDestination: this.toBoolean(
         input.allowMultiDestination,
         DEFAULT_SETTINGS.allowMultiDestination ?? false,
-      ),
-      paidTransfers: this.toBoolean(
-        input.paidTransfers,
-        DEFAULT_SETTINGS.paidTransfers,
       ),
       payTransferTime: this.toBoolean(
         input.payTransferTime,
