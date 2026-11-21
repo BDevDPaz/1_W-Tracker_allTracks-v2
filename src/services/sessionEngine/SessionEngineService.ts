@@ -5,7 +5,7 @@ import {
 } from "@/services/database/DatabaseService";
 import { geofenceService } from "@/services/geofence/GeofenceService";
 import { settingsService } from "@/services/settings/SettingsService";
-import type { Session } from "@/types/contracts";
+import type { Session, UserSettings } from "@/types/contracts";
 import * as Notifications from "expo-notifications";
 
 class PromiseQueue {
@@ -61,6 +61,25 @@ class SessionEngine {
     }
   }
 
+  private async getFreshSettings(): Promise<UserSettings> {
+    return settingsService.getFreshSettings();
+  }
+
+  private async getGracePeriodMinutes(): Promise<number> {
+    try {
+      const fresh = await this.getFreshSettings();
+      const grace = fresh.gracePeriodMinutes;
+      if (typeof grace === "number" && Number.isFinite(grace) && grace > 0) {
+        return grace;
+      }
+      // 0 = no configurado en Admin. Mantiene el comportamiento anterior (15)
+      // hasta que Admin configure un valor explícito > 0.
+      return 15;
+    } catch (_error) {
+      return 15;
+    }
+  }
+
   async getActiveSession(): Promise<Session | null> {
     return (await this.queue.enqueue(async () => {
       return await sessionRepository.getActive();
@@ -74,21 +93,25 @@ class SessionEngine {
       );
       if (current) throw new Error("Ya existe una sesión activa.");
 
-      const settings = await settingsService.load();
+      // Provisional: fresco en creación, no caché.
+      const fresh = await this.getFreshSettings();
       const id = Crypto.randomUUID();
       const now = new Date().toISOString();
       const today = now.split("T")[0];
 
       await this.db.runAsync(
-        `INSERT INTO sessions (id, date, start_time, state, destination, alias, snapshot_rate, integrity_type, created_at, updated_at)
-         VALUES (?, ?, ?, 'ESPERANDO', ?, ?, ?, 'VALID', ?, ?)`,
+        `INSERT INTO sessions (id, date, start_time, state, destination, alias, snapshot_rate, snapshot_multiplier, snapshot_threshold_hours, snapshot_currency, snapshot_is_approximate, integrity_type, created_at, updated_at)
+         VALUES (?, ?, ?, 'ESPERANDO', ?, ?, ?, ?, ?, ?, 0, 'VALID', ?, ?)`,
         [
           id,
           today,
           now,
           destination,
           alias || destination,
-          settings.hourlyRate,
+          fresh.hourlyRate,
+          fresh.overtimeMultiplier,
+          fresh.overtimeThresholdHours ?? 8,
+          fresh.currency ?? "USD",
           now,
           now,
         ],
@@ -97,26 +120,37 @@ class SessionEngine {
       try {
         const alreadyInside = await this.geofence.register({
           identifier: id,
-          radius: settings.geofenceRadius || 100,
+          radius: fresh.geofenceRadius || 100,
           destination,
         });
         if (alreadyInside) {
-         await this.db.runAsync(
-           `UPDATE sessions SET state = 'ACTIVA', start_time = ?, updated_at = ? WHERE id = ?`,
-           [now, now, id],
-         );
-         // Notificación inmediata, no esperar a que el task de fondo dispare tarde
-         await Notifications.scheduleNotificationAsync({
-           content: {
-             title: "📍 Check-in Automático",
-             body: "Has llegado a tu destino. Jornada activa.",
-             sound: true,
-           },
-           trigger: null,
-         }).catch(() => {});
-       }
+          // Congelado: fresco de nuevo en el momento exacto de pasar a ACTIVA.
+          const frozen = await this.getFreshSettings();
+          await this.db.runAsync(
+            `UPDATE sessions SET state = 'ACTIVA', start_time = ?, snapshot_rate = ?, snapshot_multiplier = ?, snapshot_threshold_hours = ?, snapshot_currency = ?, snapshot_is_approximate = 0, updated_at = ? WHERE id = ?`,
+            [
+              now,
+              frozen.hourlyRate,
+              frozen.overtimeMultiplier,
+              frozen.overtimeThresholdHours ?? 8,
+              frozen.currency ?? "USD",
+              now,
+              id,
+            ],
+          );
+          // Notificación inmediata, no esperar a que el task de fondo dispare tarde
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "📍 Check-in Automático",
+              body: "Has llegado a tu destino. Jornada activa.",
+              sound: true,
+            },
+            trigger: null,
+          }).catch(() => {});
+        }
       } catch (_error) {
         /* sin permiso o sin geocoding, queda en ESPERANDO con confirmación manual */
+        /* Principal: Geofence devuelve false sin centro real, no se registra geofence falso */
       }
       this.notifyStateChange();
     })) as void;
@@ -136,21 +170,32 @@ class SessionEngine {
       const now = exactTime || new Date().toISOString();
 
       if (session.state === "ESPERANDO") {
+        // Único punto donde se congela: ESPERANDO -> ACTIVA, con fresco.
+        const fresh = await this.getFreshSettings();
         await this.db.runAsync(
-          `UPDATE sessions SET state = 'ACTIVA', start_time = ?, updated_at = ? WHERE id = ?`,
-          [now, now, session.id],
+          `UPDATE sessions SET state = 'ACTIVA', start_time = ?, snapshot_rate = ?, snapshot_multiplier = ?, snapshot_threshold_hours = ?, snapshot_currency = ?, snapshot_is_approximate = 0, updated_at = ? WHERE id = ?`,
+          [
+            now,
+            fresh.hourlyRate,
+            fresh.overtimeMultiplier,
+            fresh.overtimeThresholdHours ?? 8,
+            fresh.currency ?? "USD",
+            now,
+            session.id,
+          ],
         );
         try {
-          const settings = await settingsService.load();
           await this.geofence.register({
             identifier: session.id,
-            radius: settings.geofenceRadius || 100,
+            radius: fresh.geofenceRadius || 100,
             destination: session.destination,
           });
         } catch (_error) {
           /* silence error */
         }
       } else if (session.state === "TRASLADO") {
+        // Vuelta de traslado: NO se vuelve a congelar snapshot.
+        // El snapshot ya quedó congelado en la primera ACTIVA.
         const openTransfer = await this.db.getFirstAsync<{
           id: string;
           target_destination: string;
@@ -173,10 +218,10 @@ class SessionEngine {
             ],
           );
           try {
-            const settings = await settingsService.load();
+            const fresh = await this.getFreshSettings();
             await this.geofence.register({
               identifier: session.id,
-              radius: settings.geofenceRadius || 100,
+              radius: fresh.geofenceRadius || 100,
               destination: openTransfer.target_destination,
             });
           } catch (_error) {
@@ -203,25 +248,73 @@ class SessionEngine {
     })) as void;
   }
 
-  async evaluatePendingExits(): Promise<void> {
+  async processPendingGeofenceEvents(): Promise<void> {
     return (await this.queue.enqueue(async () => {
+      const pending = await this.geofence.getPendingGeofenceEvents();
+      for (const evt of pending) {
+        try {
+          const session = await this.db.getFirstAsync<{
+            id: string;
+            state: string;
+          }>(
+            `SELECT id, state FROM sessions WHERE id = ?`,
+            [evt.identifier],
+          );
+          if (!session) continue;
+
+          if (evt.eventType === "ENTER" && session.state === "ESPERANDO") {
+            const fresh = await this.getFreshSettings();
+            await this.db.runAsync(
+              `UPDATE sessions SET state = 'ACTIVA', start_time = ?, snapshot_rate = ?, snapshot_multiplier = ?, snapshot_threshold_hours = ?, snapshot_currency = ?, snapshot_is_approximate = 0, updated_at = ? WHERE id = ?`,
+              [
+                evt.timestamp,
+                fresh.hourlyRate,
+                fresh.overtimeMultiplier,
+                fresh.overtimeThresholdHours ?? 8,
+                fresh.currency ?? "USD",
+                evt.timestamp,
+                session.id,
+              ],
+            );
+          } else if (evt.eventType === "EXIT" && session.state === "ACTIVA") {
+            await this.db.runAsync(
+              `UPDATE sessions SET state = 'SALIDA', updated_at = ? WHERE id = ?`,
+              [evt.timestamp, session.id],
+            );
+          }
+        } finally {
+          await this.geofence.markGeofenceEventProcessed(evt.id);
+        }
+      }
+      this.notifyStateChange();
+    })) as void;
+  }
+
+  async evaluatePendingExits(): Promise<void> {
+    const toFinish = await this.queue.enqueue(async () => {
       const session = await this.db.getFirstAsync<{
         id: string;
         updated_at: string;
       }>(
         `SELECT id, updated_at FROM sessions WHERE state = 'SALIDA' ORDER BY created_at DESC LIMIT 1`,
       );
-      if (!session) return;
+      if (!session) return null;
 
-      const exitTime = new Date(session.updated_at).getTime();
-      const now = Date.now();
-      const diffMinutes = (now - exitTime) / (1000 * 60);
+      const grace = await this.getGracePeriodMinutes();
+      const exitTime = Date.parse(session.updated_at);
+      if (Number.isNaN(exitTime)) return null;
+      const diffMinutes = (Date.now() - exitTime) / (1000 * 60);
 
-      if (diffMinutes >= 15) {
-        this.queue = new PromiseQueue();
-        await this.finishWorkDay(0, session.updated_at);
+      if (diffMinutes >= grace) {
+        return { exitTime: session.updated_at };
       }
-    })) as void;
+      return null;
+    });
+
+    // Fuera de la cola: finishWorkDay también encola, si se llamara dentro habría deadlock.
+    if (toFinish) {
+      await this.finishWorkDay(0, (toFinish as { exitTime: string }).exitTime);
+    }
   }
 
   async startTransfer(
@@ -283,10 +376,10 @@ class SessionEngine {
       );
 
       try {
-        const settings = await settingsService.load();
+        const fresh = await this.getFreshSettings();
         await this.geofence.register({
           identifier: session.id,
-          radius: settings.geofenceRadius || 100,
+          radius: fresh.geofenceRadius || 100,
           destination: session.destination,
         });
       } catch (_error) {
@@ -386,8 +479,10 @@ class SessionEngine {
         state: string;
         start_time: string;
         snapshot_rate: number;
+        snapshot_multiplier: number;
+        snapshot_threshold_hours: number;
       }>(
-        `SELECT id, state, start_time, snapshot_rate FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
+        `SELECT id, state, start_time, snapshot_rate, snapshot_multiplier, snapshot_threshold_hours FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
       );
       if (!session) return;
 
@@ -454,21 +549,17 @@ class SessionEngine {
         totalMinutes = Math.round((endMs - startMs) / 60000);
         if (totalMinutes < 0) totalMinutes = 0;
       }
+      // Una sola deducción: solo lunchDeductedMinutes (valor real del modal).
+      // pauseMinutes se guarda como registro, no se vuelve a restar.
       const netMinutes = Math.max(0, totalMinutes - (lunchDeductedMinutes || 0));
       const totalHours = Number((netMinutes / 60).toFixed(2));
 
-      let settingsRate: number | undefined;
-      let settingsMultiplier: number | undefined;
-      try {
-        const settings = await settingsService.load();
-        settingsRate = settings.hourlyRate;
-        settingsMultiplier = settings.overtimeMultiplier;
-      } catch (_e) {
-        /* usa snapshot_rate y 1.5 por defecto */
-      }
-      const rate = session.snapshot_rate ?? settingsRate ?? 20;
-      const multiplier = settingsMultiplier ?? 1.5;
-      const overtimeHours = Number(Math.max(0, totalHours - 8).toFixed(2));
+      // Cierre SOLO con snapshot. Nunca con settings en vivo.
+      // Fallbacks solo si snapshot es null (sesión vieja sin migración).
+      const rate = session.snapshot_rate ?? 20;
+      const multiplier = session.snapshot_multiplier ?? 1.5;
+      const threshold = session.snapshot_threshold_hours ?? 8;
+      const overtimeHours = Number(Math.max(0, totalHours - threshold).toFixed(2));
       const baseHours = Math.max(0, totalHours - overtimeHours);
       const totalEarnings = Number(
         (baseHours * rate + overtimeHours * rate * multiplier).toFixed(2),
