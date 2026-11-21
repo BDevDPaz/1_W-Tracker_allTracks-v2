@@ -333,6 +333,16 @@ class SessionEngine {
       if (session.state !== "ACTIVA")
         throw new Error("Solo puedes trasladarte si la jornada está activa.");
 
+      // P2: allowMultiDestination es el único toggle de multi-destino.
+      // Un transfer es el segundo destino. Si es false, no se permite ningún traslado.
+      // Se lee fresco, no caché, porque es un permiso operativo vigente al momento del traslado.
+      const fresh = await this.getFreshSettings();
+      if (fresh.allowMultiDestination !== true) {
+        throw new Error(
+          "Multi-destino desactivado por el administrador. No puedes trasladarte a un segundo destino.",
+        );
+      }
+
       const now = new Date().toISOString();
       const finalDest = targetAlias || targetDestination;
       const transferId = Crypto.randomUUID();
@@ -552,7 +562,22 @@ class SessionEngine {
       // Una sola deducción: solo lunchDeductedMinutes (valor real del modal).
       // pauseMinutes se guarda como registro, no se vuelve a restar.
       const netMinutes = Math.max(0, totalMinutes - (lunchDeductedMinutes || 0));
-      const totalHours = Number((netMinutes / 60).toFixed(2));
+
+      // P2: payTransferTime es el único toggle de traslado pagado.
+      // Si es false, transferMinutes NO entra en paid_minutes ni en total_earnings.
+      // No existe columna snapshot_pay_transfer_time, así que se lee vigente con getFreshSettings().
+      // Si la lectura falla, se mantiene pagado para no recortar pago por un error de lectura.
+      let payTransferTime = true;
+      try {
+        const fresh = await this.getFreshSettings();
+        payTransferTime = fresh.payTransferTime !== false;
+      } catch (_error) {
+        payTransferTime = true;
+      }
+      const paidMinutes = payTransferTime
+        ? netMinutes
+        : Math.max(0, netMinutes - transferMinutes);
+      const totalHours = Number((paidMinutes / 60).toFixed(2));
 
       // Cierre SOLO con snapshot. Nunca con settings en vivo.
       // Fallbacks solo si snapshot es null (sesión vieja sin migración).
@@ -573,7 +598,7 @@ class SessionEngine {
           totalHours,
           totalEarnings,
           overtimeHours,
-          netMinutes,
+          paidMinutes,
           pauseMinutes,
           transferMinutes,
           now,
