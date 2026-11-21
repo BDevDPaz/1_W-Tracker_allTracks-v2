@@ -24,6 +24,10 @@ interface DBSessionRow {
   lunch_deducted_minutes: number;
   overtime_hours: number;
   snapshot_rate: number;
+  snapshot_multiplier: number;
+  snapshot_threshold_hours: number;
+  snapshot_currency: string;
+  snapshot_is_approximate: number;
   total_earnings: number;
   integrity_type: string;
   notes: string | null;
@@ -80,6 +84,8 @@ interface DBBreakRow {
 interface DBSettingsRow {
   hourly_rate: number | null;
   overtime_multiplier: number | null;
+  overtime_threshold_hours: number | null;
+  currency: string | null;
 }
 
 interface DBTransferCountRow {
@@ -131,7 +137,7 @@ function calcTotalEarnings(
   const baseHours = Math.max(0, totalHours - (overtimeHours || 0));
   const base = baseHours * snapshotRate;
   const overtime =
-    (overtimeHours || 0) * snapshotRate * (overtimeMultiplier || 1.5);
+    (overtimeHours || 0) * snapshotRate * overtimeMultiplier;
   return Number((base + overtime).toFixed(2));
 }
 
@@ -365,12 +371,58 @@ async function migrateIntegrityTypes(db: SQLite.SQLiteDatabase): Promise<void> {
   `);
 }
 
+async function migrateSessionSnapshots(db: SQLite.SQLiteDatabase): Promise<void> {
+  await addColumnIfMissing(db, "sessions", "snapshot_multiplier", "REAL");
+  await addColumnIfMissing(
+    db,
+    "sessions",
+    "snapshot_threshold_hours",
+    "REAL",
+  );
+  await addColumnIfMissing(db, "sessions", "snapshot_currency", "TEXT");
+  await addColumnIfMissing(
+    db,
+    "sessions",
+    "snapshot_is_approximate",
+    "INTEGER",
+  );
+
+  // Backfill inmediato, solo filas sin snapshot. No recalcula cerradas.
+  // Lee settings actuales una sola vez en migración, no en cada lectura posterior.
+  // Fallback solo si no existe fila de settings.
+  const settingsRow = await db.getFirstAsync<DBSettingsRow>(
+    "SELECT hourly_rate, overtime_multiplier, overtime_threshold_hours, currency FROM settings WHERE id = 'user_settings'",
+  );
+  const snapshotMultiplier = settingsRow?.overtime_multiplier ?? 1.5;
+  const snapshotThresholdHours = settingsRow?.overtime_threshold_hours ?? 8;
+  const snapshotCurrency = settingsRow?.currency ?? "USD";
+
+  await db.runAsync(
+    `UPDATE sessions SET snapshot_multiplier = ?, snapshot_threshold_hours = ?, snapshot_currency = ?, snapshot_is_approximate = 1 WHERE snapshot_multiplier IS NULL`,
+    [snapshotMultiplier, snapshotThresholdHours, snapshotCurrency],
+  );
+  await db.runAsync(
+    `UPDATE sessions SET snapshot_threshold_hours = ?, snapshot_currency = ?, snapshot_is_approximate = 1 WHERE snapshot_threshold_hours IS NULL`,
+    [snapshotThresholdHours, snapshotCurrency],
+  );
+  await db.runAsync(
+    `UPDATE sessions SET snapshot_currency = ? WHERE snapshot_currency IS NULL`,
+    [snapshotCurrency],
+  );
+  await db.runAsync(
+    `UPDATE sessions SET snapshot_is_approximate = 1 WHERE snapshot_is_approximate IS NULL AND snapshot_multiplier IS NOT NULL`,
+  );
+}
+
 export const DB_SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY NOT NULL, date TEXT NOT NULL, destination TEXT NOT NULL, alias TEXT,
     start_time TEXT NOT NULL, end_time TEXT, total_hours REAL NOT NULL DEFAULT 0,
     lunch_deducted_minutes INTEGER NOT NULL DEFAULT 0, overtime_hours REAL NOT NULL DEFAULT 0,
-    snapshot_rate REAL NOT NULL DEFAULT 20, total_earnings REAL NOT NULL DEFAULT 0,
+    snapshot_rate REAL NOT NULL DEFAULT 20, snapshot_multiplier REAL NOT NULL DEFAULT 1.5,
+    snapshot_threshold_hours REAL NOT NULL DEFAULT 8, snapshot_currency TEXT NOT NULL DEFAULT 'USD',
+    snapshot_is_approximate INTEGER NOT NULL DEFAULT 0,
+    total_earnings REAL NOT NULL DEFAULT 0,
     integrity_type TEXT NOT NULL DEFAULT 'VALID', notes TEXT, state TEXT NOT NULL DEFAULT 'NO_INICIADA',
     paid_minutes INTEGER NOT NULL DEFAULT 0, pause_minutes INTEGER NOT NULL DEFAULT 0,
     transfer_minutes INTEGER NOT NULL DEFAULT 0, destination_count INTEGER NOT NULL DEFAULT 1,
@@ -454,6 +506,7 @@ export class DatabaseService {
     await db.execAsync(DB_SCHEMA);
     await migrateSettingsTable(db);
     await migrateIntegrityTypes(db);
+    await migrateSessionSnapshots(db);
     this.db = db;
   }
 
@@ -557,12 +610,20 @@ export class SessionRepository implements ISessionRepository {
       sessionData.visits[0]?.destination ||
       "Principal";
 
+    const hasSnapshot =
+      sessionData.snapshotMultiplier !== undefined &&
+      sessionData.snapshotThresholdHours !== undefined;
+    const snapshotMultiplier = sessionData.snapshotMultiplier ?? 1.5;
+    const snapshotThresholdHours = sessionData.snapshotThresholdHours ?? 8;
+    const snapshotCurrency = sessionData.snapshotCurrency ?? "USD";
+    const snapshotIsApproximate = sessionData.snapshotIsApproximate ?? !hasSnapshot;
+
     await database.runAsync(
       `INSERT INTO sessions (
         id, date, destination, alias, start_time, end_time, total_hours, lunch_deducted_minutes,
-        overtime_hours, snapshot_rate, total_earnings, integrity_type, notes, state, paid_minutes,
+        overtime_hours, snapshot_rate, snapshot_multiplier, snapshot_threshold_hours, snapshot_currency, snapshot_is_approximate, total_earnings, integrity_type, notes, state, paid_minutes,
         pause_minutes, transfer_minutes, destination_count, _lat, _lng, _device_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         sessionData.id,
         sessionData.date,
@@ -574,6 +635,10 @@ export class SessionRepository implements ISessionRepository {
         sessionData.lunchDeductedMinutes,
         sessionData.overtimeHours,
         sessionData.snapshotRate,
+        snapshotMultiplier,
+        snapshotThresholdHours,
+        snapshotCurrency,
+        snapshotIsApproximate ? 1 : 0,
         sessionData.totalEarnings,
         integrity,
         sessionData.notes || null,
@@ -637,6 +702,19 @@ export class SessionRepository implements ISessionRepository {
       addPatch("lunch_deducted_minutes", patch.lunchDeductedMinutes);
     if (patch.overtimeHours !== undefined)
       addPatch("overtime_hours", patch.overtimeHours);
+    if (patch.snapshotRate !== undefined)
+      addPatch("snapshot_rate", patch.snapshotRate);
+    if (patch.snapshotMultiplier !== undefined)
+      addPatch("snapshot_multiplier", patch.snapshotMultiplier);
+    if (patch.snapshotThresholdHours !== undefined)
+      addPatch("snapshot_threshold_hours", patch.snapshotThresholdHours);
+    if (patch.snapshotCurrency !== undefined)
+      addPatch("snapshot_currency", patch.snapshotCurrency);
+    if (patch.snapshotIsApproximate !== undefined)
+      addPatch(
+        "snapshot_is_approximate",
+        patch.snapshotIsApproximate ? 1 : 0,
+      );
     if (patch.totalEarnings !== undefined)
       addPatch("total_earnings", patch.totalEarnings);
     if (patch.integrityType !== undefined)
@@ -694,12 +772,6 @@ export class SessionRepository implements ISessionRepository {
       `SELECT * FROM sessions WHERE date >= ? AND date <= ? AND state = 'CERRADA'`,
       [weekStart, weekEnd],
     );
-    const settingsRow = await database.getFirstAsync<DBSettingsRow>(
-      "SELECT hourly_rate, overtime_multiplier FROM settings WHERE id = 'user_settings'",
-    );
-
-    const baseRate = settingsRow?.hourly_rate ?? 20;
-    const overtimeMultiplier = settingsRow?.overtime_multiplier ?? 1.5;
 
     let totalHours = 0,
       totalEarnings = 0,
@@ -709,6 +781,9 @@ export class SessionRepository implements ISessionRepository {
       overtimeEarnings = 0,
       paidMinutesSum = 0,
       transfersSum = 0;
+    let totalBaseHours = 0,
+      weightedBaseRateSum = 0,
+      weightedMultiplierSum = 0;
 
     for (const row of rows) {
       const effectiveHours =
@@ -726,7 +801,7 @@ export class SessionRepository implements ISessionRepository {
               effectiveHours,
               row.snapshot_rate,
               row.overtime_hours,
-              overtimeMultiplier,
+              row.snapshot_multiplier,
             );
       totalHours += effectiveHours;
       totalEarnings += effectiveEarnings;
@@ -738,11 +813,15 @@ export class SessionRepository implements ISessionRepository {
       if (row.integrity_type === "MANUAL") manualAdjustments++;
 
       const sRate = row.snapshot_rate;
+      const sMultiplier = row.snapshot_multiplier;
       const sOvertime = row.overtime_hours;
       const sBaseHours = Math.max(0, effectiveHours - sOvertime);
 
       baseEarnings += sBaseHours * sRate;
-      overtimeEarnings += sOvertime * sRate * overtimeMultiplier;
+      overtimeEarnings += sOvertime * sRate * sMultiplier;
+      totalBaseHours += sBaseHours;
+      weightedBaseRateSum += sBaseHours * sRate;
+      weightedMultiplierSum += sOvertime * sMultiplier;
 
       const transferCountRow = await database.getFirstAsync<DBTransferCountRow>(
         "SELECT COUNT(*) as count FROM transfers WHERE session_id = ?",
@@ -750,6 +829,20 @@ export class SessionRepository implements ISessionRepository {
       );
       transfersSum += transferCountRow?.count ?? 0;
     }
+
+    // baseRate y overtimeMultiplier del resumen son promedios ponderados desde snapshots, no desde settings en vivo.
+    const baseRate =
+      totalBaseHours > 0
+        ? Number((weightedBaseRateSum / totalBaseHours).toFixed(2))
+        : rows.length > 0
+          ? rows[0]!.snapshot_rate
+          : 0;
+    const overtimeMultiplier =
+      overtimeHours > 0
+        ? Number((weightedMultiplierSum / overtimeHours).toFixed(2))
+        : rows.length > 0
+          ? rows[0]!.snapshot_multiplier
+          : 0;
 
     return {
       weekStartDate: weekStart,
@@ -853,10 +946,10 @@ export class SessionRepository implements ISessionRepository {
       metadata: e.metadata ?? undefined,
     }));
 
-    // CORRECCIÓN: horas en vivo para sesión no cerrada.
-    // CERRADA -> usa lo guardado / calcula con end_time como antes.
+    // CORRECCIÓN: horas en vivo para sesión no cerrada, con snapshot, no con live ni hardcodeado.
+    // CERRADA -> usa lo guardado / calcula con end_time y snapshot.
     // ESPERANDO / NO_INICIADA -> 0, todavía no llegó.
-    // ACTIVA / PAUSADA / TRASLADO / SALIDA -> calcula con now, no con 0 de DB.
+    // ACTIVA / PAUSADA / TRASLADO / SALIDA -> calcula con now y snapshot_threshold_hours y snapshot_multiplier.
     let effectiveTotalHours: number;
     let effectiveOvertimeHours: number;
     let effectiveTotalEarnings: number;
@@ -878,7 +971,7 @@ export class SessionRepository implements ISessionRepository {
               effectiveTotalHours,
               row.snapshot_rate,
               effectiveOvertimeHours,
-              1.5,
+              row.snapshot_multiplier,
             );
     } else if (row.state === "ESPERANDO" || row.state === "NO_INICIADA") {
       effectiveTotalHours = 0;
@@ -892,13 +985,13 @@ export class SessionRepository implements ISessionRepository {
         row.lunch_deducted_minutes,
       );
       effectiveOvertimeHours = Number(
-        Math.max(0, effectiveTotalHours - 8).toFixed(2),
+        Math.max(0, effectiveTotalHours - row.snapshot_threshold_hours).toFixed(2),
       );
       effectiveTotalEarnings = calcTotalEarnings(
         effectiveTotalHours,
         row.snapshot_rate,
         effectiveOvertimeHours,
-        1.5,
+        row.snapshot_multiplier,
       );
     }
 
@@ -920,6 +1013,10 @@ export class SessionRepository implements ISessionRepository {
       destinationCount: row.destination_count,
       overtimeHours: effectiveOvertimeHours,
       snapshotRate: row.snapshot_rate,
+      snapshotMultiplier: row.snapshot_multiplier,
+      snapshotThresholdHours: row.snapshot_threshold_hours,
+      snapshotCurrency: row.snapshot_currency,
+      snapshotIsApproximate: row.snapshot_is_approximate === 1,
       totalEarnings: effectiveTotalEarnings,
       integrityType: (row.integrity_type === "GPS"
         ? "VALID"
@@ -993,9 +1090,7 @@ export class SessionRepository implements ISessionRepository {
     sessionId: string,
     transfers: Transfer[],
   ): Promise<void> {
-    await db.runAsync("DELETE FROM transfers WHERE session_id = ?", [
-      sessionId,
-    ]);
+    await db.runAsync("DELETE FROM transfers WHERE session_id = ?", [sessionId]);
     for (const t of transfers) {
       const origin = t.originDestination || t.fromDestination || "";
       const target =
