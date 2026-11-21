@@ -25,21 +25,31 @@ jest.mock("../database/DatabaseService", () => ({
 // Mockeamos la Geocerca para evitar llamadas nativas en las pruebas
 jest.mock("../geofence/GeofenceService", () => ({
   geofenceService: {
-    register: jest.fn(),
+    register: jest.fn(() => Promise.resolve(false)),
     unregister: jest.fn(),
   },
 }));
 
-jest.mock("../settings/SettingsService", () => ({
-  settingsService: {
-    load: jest.fn(() =>
-      Promise.resolve({
-        hourlyRate: 25,
-        geofenceRadius: 100,
-      }),
-    ),
-  },
-}));
+jest.mock("../settings/SettingsService", () => {
+  const mockSettings = {
+    hourlyRate: 25,
+    overtimeMultiplier: 1.5,
+    overtimeThresholdHours: 8,
+    thresholdHours: 8,
+    overtimeThreshold: 8,
+    currency: "USD",
+    geofenceRadius: 100,
+    gracePeriodMinutes: 15,
+    entryToleranceMinutes: 5,
+    principalAddress: "",
+  };
+  return {
+    settingsService: {
+      load: jest.fn(() => Promise.resolve(mockSettings)),
+      getFreshSettings: jest.fn(() => Promise.resolve(mockSettings)),
+    },
+  };
+});
 
 describe("SessionEngineService (Máquina de Estados)", () => {
   beforeEach(() => {
