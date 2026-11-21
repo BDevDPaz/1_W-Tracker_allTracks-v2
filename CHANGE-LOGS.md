@@ -1,4 +1,26 @@
 # W Tracker v2 — CHANGE-LOGS
+## Estado final
+
+- Rama `chore/upgrade-sdk-54` en commit `9b289a3`, pusheada.
+- `git status` limpio para este fix (assets modificados quedan fuera).
+- `npx tsc --noEmit` sin errores.
+- PR #1 y PR #2 en Draft, sin merge.
+- Diseño premium aplicado a Hoy: `tokens` + `Surface` + `HeroCard` + `Button` + `Pill` + `Timeline` + `MetricTile` + `Header` + `Input`.
+- Ajustes split Worker / Admin funcionando en dev build + toast + `startDate` normalizado.
+
+### changelog_261120_000030 — 9b289a3
+**fix(settings): Ajustes toast no tapa AJUSTES + normalizar startDate a YYYY-MM-DD**
+
+- `src/screens/AjustesScreen.tsx`
+- Toast: `safeArea.paddingTop` Android `24` → `64`, iOS `0` → `16`. Reserva espacio para el toast global que es un overlay absoluto arriba. Sin este inset, el toast tapaba el título `AJUSTES`.
+- `startDate`: nueva `normalizeStartDate()` — `20190308` → `2019-03-08`, `2019/03/08` → `2019-03-08`, valida fecha real (`20191340` / `20190230` = error).
+- Normalización aplicada al cargar (`adminFormFromSettings`), al teclear 8 dígitos en vivo (`handleStartDateChange`), y al guardar Admin antes del Alert de confirmación. Si es inválido, no abre el Alert y muestra `Fecha Inicio debe ser YYYY-MM-DD, ej: 2019-03-08.`
+- No toca radio, toggles duplicados, horas base / umbral ni almuerzo — esas decisiones siguen pendientes.
+- Verificado con `npx tsc --noEmit` limpio.
+- Pusheado como `HEAD -> origin/chore/upgrade-sdk-54` en `9b289a3`, `git status` limpio para este archivo.
+
+=========
+
 
 Repo: BDevDPaz/1_W-Tracker_allTracks-v2
 Rama: chore/upgrade-sdk-54
@@ -280,8 +302,6 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 
 ---
 
-## Estado final
-
 - Rama `chore/upgrade-sdk-54` en commit `641ec5f`, pusheada.
 - `git status` limpio.
 - `npx tsc --noEmit` sin errores.
@@ -380,7 +400,8 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 - Fondo `obsidian` → `graphite` para que se sienta como tarjeta.
 - Etiqueta con peso 700 y tracking 1.2.
 - Mantiene `label`, `error`, `containerStyle` + todo `TextInputProps`, y respeta `onFocus` / `onBlur` originales.
-## Estado final
+
+#=====
 
 - Rama `chore/upgrade-sdk-54` en commit `3910f53`, pusheada.
 - `git status` limpio.
@@ -561,7 +582,6 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 
 ---
 
-## Estado final
 
 - Rama `chore/upgrade-sdk-54` en commit `9f8bec8`, pusheada.
 - `git status` limpio.
