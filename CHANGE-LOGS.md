@@ -454,6 +454,23 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 
 ---
 
+### 000045 - P1 auditoría: DatabaseService - DEFAULT 100 -> 150
+- Commit: 9ca0018
+- Archivo: src/services/database/DatabaseService.ts
+- Cambio: DB_SCHEMA settings `geofence_radius INTEGER NOT NULL DEFAULT 100` -> `DEFAULT 150`.
+- Motivo: auditoría P1 encontró que el default de SQLite era 100, no 150, aunque SettingsService y AjustesScreen ya tenían 150. `tsc` no lo detecta.
+- Nota: solo arregla instalaciones nuevas. Tablas ya creadas mantienen su default viejo en `sqlite_master` porque `CREATE TABLE IF NOT EXISTS` no reescribe tabla existente. No se hizo `UPDATE` que cambie un 100 guardado a 150, porque 100 es válido en 80-250 y no se puede distinguir si fue intencional o default viejo.
+- Verificación: grep muestra `DEFAULT 150` en línea 459, `npx tsc --noEmit` limpio.
+
+### 000046 - P1 auditoría: SessionEngineService - fallback 100 -> 150 (4 lugares)
+- Commit: 6f8ebf3
+- Archivo: src/services/sessionEngine/SessionEngineService.ts
+- Cambio: `fresh.geofenceRadius || 100` -> `fresh.geofenceRadius || 150` en `startSession`, `confirmArrival` ESPERANDO, `confirmArrival` TRASLADO y `cancelTransfer`.
+- Motivo: auditoría P1 encontró que si `fresh.geofenceRadius` venía vacío, el Engine creaba geofence con 100, saltándose el clamp y el default P1 de 150.
+- Verificación: grep muestra 4 líneas con `|| 150`, `npx tsc --noEmit` limpio.
+
+---
+
 ## QA pendiente en dispositivo (SDK 54 dev build)
 
 - Destino real / Alias etiqueta estando ya dentro -> auto-activar a ACTIVA.
