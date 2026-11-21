@@ -71,6 +71,7 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 - Nuevo test snap: 83 -> 80, 87 -> 90.
 - Verificación: npx tsc --noEmit limpio, npx jest src/services/settings/SettingsService.test.ts --no-coverage 5/5 passed.
 
+
 ---
 
 ## PR #2 — chore/upgrade-sdk-54
@@ -468,6 +469,14 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 - Cambio: `fresh.geofenceRadius || 100` -> `fresh.geofenceRadius || 150` en `startSession`, `confirmArrival` ESPERANDO, `confirmArrival` TRASLADO y `cancelTransfer`.
 - Motivo: auditoría P1 encontró que si `fresh.geofenceRadius` venía vacío, el Engine creaba geofence con 100, saltándose el clamp y el default P1 de 150.
 - Verificación: grep muestra 4 líneas con `|| 150`, `npx tsc --noEmit` limpio.
+
+### 000047 - P2 auditoría: columnas multi_destination / paid_transfers quedan muertas, decisión A
+- Commit: — (auditoría sin cambio de código, documentada en este commit de changelog)
+- Archivo: src/services/database/DatabaseService.ts (sin cambio)
+- Verificación: grep total 70 líneas. Solo `DatabaseService.ts` 181, 187, 462 crea/migra `multi_destination` y `paid_transfers`. Ningún `INSERT`, `UPDATE` ni `mapFromDatabase` las lee o escribe.
+- Decisión confirmada A: se dejan como columnas muertas intencionalmente, sin `DROP COLUMN`. Motivo: `tsc` no las detecta, no afectan funcionamiento, y `DROP COLUMN` es destructivo e irreversible por ganancia solo estética.
+- Regla futura: no reutilizar los nombres `multi_destination` / `paid_transfers` para otra cosa. Si algún día se quiere limpieza total, hacer migración aparte, no mezclada con P2/P3.
+- Verificación: `npx tsc --noEmit` limpio (sin cambio de código).
 
 ---
 
