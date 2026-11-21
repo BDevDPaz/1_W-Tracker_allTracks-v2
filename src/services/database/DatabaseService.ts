@@ -456,7 +456,7 @@ export const DB_SCHEMA = `
     id TEXT PRIMARY KEY NOT NULL DEFAULT 'user_settings', name TEXT NOT NULL DEFAULT '',
     hourly_rate REAL NOT NULL DEFAULT 20, report_email TEXT NOT NULL DEFAULT '',
     base_work_hour TEXT NOT NULL DEFAULT '06:00', overtime_multiplier REAL NOT NULL DEFAULT 1.5,
-    lunch_discount_minutes INTEGER NOT NULL DEFAULT 30, geofence_radius INTEGER NOT NULL DEFAULT 100,
+    lunch_discount_minutes INTEGER NOT NULL DEFAULT 30, geofence_radius INTEGER NOT NULL DEFAULT 150,
     daily_reminder INTEGER NOT NULL DEFAULT 1, workday_alerts INTEGER NOT NULL DEFAULT 1,
     report_ready INTEGER NOT NULL DEFAULT 1, language TEXT NOT NULL DEFAULT 'es',
     multi_destination INTEGER NOT NULL DEFAULT 0, paid_transfers INTEGER NOT NULL DEFAULT 1,
