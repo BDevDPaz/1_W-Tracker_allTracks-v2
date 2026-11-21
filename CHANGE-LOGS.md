@@ -1,6 +1,25 @@
 # W Tracker v2 — CHANGE-LOGS
 ## Estado final
 
+- Rama `chore/upgrade-sdk-54` en commit `eeb9014`, pusheada.
+- `git status` limpio para este fix (assets modificados quedan fuera).
+- `npx tsc --noEmit` sin errores.
+- PR #1 y PR #2 en Draft, sin merge.
+- Diseño premium aplicado a Hoy: `tokens` + `Surface` + `HeroCard` + `Button` + `Pill` + `Timeline` + `MetricTile` + `Header` + `Input`.
+- Ajustes split Worker / Admin funcionando en dev build + toast global debajo del header + `startDate` normalizado a `YYYY-MM-DD`.
+
+### changelog_261120_000031 — eeb9014
+**fix(toast): toast debajo del header, no tapa AJUSTES ni títulos**
+
+- `src/services/toast/ToastService.tsx`
+- Causa real: `container.top: 60` fijo. En Ajustes el header queda en `paddingTop 64 + alto Header ≈ 124`, por eso el toast en `60` siempre lo tapaba. El fix de `AjustesScreen.tsx` solo empujó el header, no movió el toast.
+- Fix: `top` dinámico `insets.top + TOAST_TOP_OFFSET` con `TOAST_TOP_OFFSET = 108` (`Header ≈ 60 + padding + respiro`) + `useSafeAreaInsets()` de `react-native-safe-area-context`. Se quitó el `top: 60` fijo del `StyleSheet`.
+- Ahora el toast aparece debajo del header en Ajustes, Hoy, Historial y Reportes, sin tapar títulos.
+- Sin regresión: misma cola, mismo dedup por `text`, misma duración `2500ms`, misma animación, mismo `pointerEvents="none"`.
+- Verificado con `npx tsc --noEmit` limpio.
+- Pusheado como `HEAD -> origin/chore/upgrade-sdk-54` en `eeb9014`.
+
+
 - Rama `chore/upgrade-sdk-54` en commit `9b289a3`, pusheada.
 - `git status` limpio para este fix (assets modificados quedan fuera).
 - `npx tsc --noEmit` sin errores.
