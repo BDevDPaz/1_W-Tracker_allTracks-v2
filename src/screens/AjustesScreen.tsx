@@ -153,6 +153,31 @@ const MaskedRow: React.FC<{ label: string; value: string }> = ({
   </View>
 );
 
+// Normaliza Fecha Inicio a YYYY-MM-DD.
+// Acepta: "" (vacío, campo opcional), "20190308", "2019/03/08", "2019-03-08".
+// Retorna null si el formato es inválido o la fecha no existe (ej: 20191340, 20190230).
+function normalizeStartDate(raw: string): string | null {
+  const v = raw.trim();
+  if (v === "") return "";
+  let candidate = v;
+  if (/^\d{8}$/.test(v)) {
+    candidate = `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+  } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(v)) {
+    candidate = v.replace(/\//g, "-");
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    return null;
+  }
+  const [yStr, mStr, dStr] = candidate.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return candidate;
+}
+
 function workerFormFromSettings(s: UserSettings): WorkerForm {
   return {
     phone: s.phone ?? "",
@@ -172,6 +197,8 @@ function workerFormFromSettings(s: UserSettings): WorkerForm {
 }
 
 function adminFormFromSettings(s: UserSettings): AdminForm {
+  const rawStartDate = s.startDate ?? "";
+  const normalizedStartDate = normalizeStartDate(rawStartDate);
   return {
     name: s.name,
     reportEmail: s.reportEmail,
@@ -179,7 +206,7 @@ function adminFormFromSettings(s: UserSettings): AdminForm {
     employeeId: s.employeeId ?? "",
     company: s.company ?? "",
     position: s.position ?? "",
-    startDate: s.startDate ?? "",
+    startDate: normalizedStartDate ?? rawStartDate,
     hourlyRate: String(s.hourlyRate),
     overtimeMultiplier: String(s.overtimeMultiplier),
     baseWorkHour: s.baseWorkHour,
@@ -276,6 +303,18 @@ export const AjustesScreen: React.FC = () => {
     setAdminForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Al teclear 8 dígitos seguidos (20190308), normaliza en vivo a 2019-03-08.
+  const handleStartDateChange = (v: string) => {
+    if (/^\d{8}$/.test(v.trim())) {
+      const n = normalizeStartDate(v);
+      if (n !== null) {
+        updateAdmin("startDate", n);
+        return;
+      }
+    }
+    updateAdmin("startDate", v);
+  };
+
   const handleSaveWorker = async () => {
     setSavingWorker(true);
     try {
@@ -312,6 +351,24 @@ export const AjustesScreen: React.FC = () => {
   };
 
   const handleSaveAdmin = async () => {
+    // Validar + normalizar startDate ANTES del Alert de confirmación.
+    // Si es inválido, no se abre el Alert y no se guarda nada.
+    const normalizedStartDate = normalizeStartDate(adminForm.startDate);
+    if (normalizedStartDate === null) {
+      ToastService.push({
+        type: "error",
+        text: "Fecha Inicio debe ser YYYY-MM-DD, ej: 2019-03-08.",
+      });
+      return;
+    }
+    const adminToSave: AdminForm =
+      normalizedStartDate !== adminForm.startDate
+        ? { ...adminForm, startDate: normalizedStartDate }
+        : adminForm;
+    if (adminToSave !== adminForm) {
+      setAdminForm(adminToSave);
+    }
+
     Alert.alert(
       "Guardar cambios de Administrador",
       "Estos cambios afectan nómina, geocerca y control. ¿Confirmas guardar?",
@@ -326,33 +383,33 @@ export const AjustesScreen: React.FC = () => {
                 throw new Error("saveAdminSettings no disponible.");
               }
               await settingsService.saveAdminSettings({
-                name: adminForm.name,
-                reportEmail: adminForm.reportEmail,
-                address: adminForm.address,
-                employeeId: adminForm.employeeId,
-                company: adminForm.company,
-                position: adminForm.position,
-                startDate: adminForm.startDate,
-                hourlyRate: parseFloat(adminForm.hourlyRate),
-                overtimeMultiplier: parseFloat(adminForm.overtimeMultiplier),
-                baseWorkHour: adminForm.baseWorkHour,
-                overtimeThresholdHours: parseFloat(adminForm.overtimeThresholdHours),
-                lunchDiscountMinutes: parseInt(adminForm.lunchDiscountMinutes, 10),
-                standardLunchMinutes: parseInt(adminForm.standardLunchMinutes, 10),
-                paidTransfers: adminForm.paidTransfers,
-                payTransferTime: adminForm.payTransferTime,
-                multiDestination: adminForm.multiDestination,
-                allowMultiDestination: adminForm.allowMultiDestination,
-                geofenceRadius: parseInt(adminForm.geofenceRadius, 10),
-                destinationLimit: parseInt(adminForm.destinationLimit, 10),
-                principalAddress: adminForm.principalAddress,
-                gracePeriodMinutes: parseInt(adminForm.gracePeriodMinutes, 10),
-                entryToleranceMinutes: parseInt(adminForm.entryToleranceMinutes, 10),
-                payDay: adminForm.payDay,
-                paymentMethod: adminForm.paymentMethod,
-                currency: adminForm.currency,
+                name: adminToSave.name,
+                reportEmail: adminToSave.reportEmail,
+                address: adminToSave.address,
+                employeeId: adminToSave.employeeId,
+                company: adminToSave.company,
+                position: adminToSave.position,
+                startDate: adminToSave.startDate,
+                hourlyRate: parseFloat(adminToSave.hourlyRate),
+                overtimeMultiplier: parseFloat(adminToSave.overtimeMultiplier),
+                baseWorkHour: adminToSave.baseWorkHour,
+                overtimeThresholdHours: parseFloat(adminToSave.overtimeThresholdHours),
+                lunchDiscountMinutes: parseInt(adminToSave.lunchDiscountMinutes, 10),
+                standardLunchMinutes: parseInt(adminToSave.standardLunchMinutes, 10),
+                paidTransfers: adminToSave.paidTransfers,
+                payTransferTime: adminToSave.payTransferTime,
+                multiDestination: adminToSave.multiDestination,
+                allowMultiDestination: adminToSave.allowMultiDestination,
+                geofenceRadius: parseInt(adminToSave.geofenceRadius, 10),
+                destinationLimit: parseInt(adminToSave.destinationLimit, 10),
+                principalAddress: adminToSave.principalAddress,
+                gracePeriodMinutes: parseInt(adminToSave.gracePeriodMinutes, 10),
+                entryToleranceMinutes: parseInt(adminToSave.entryToleranceMinutes, 10),
+                payDay: adminToSave.payDay,
+                paymentMethod: adminToSave.paymentMethod,
+                currency: adminToSave.currency,
               });
-              setAdminOriginal(adminForm);
+              setAdminOriginal(adminToSave);
               setLastAdminChangeAt(new Date().toISOString());
               ToastService.push({
                 type: "success",
@@ -862,7 +919,7 @@ export const AjustesScreen: React.FC = () => {
                       label="Fecha Inicio (YYYY-MM-DD)"
                       placeholder="2025-01-01"
                       value={adminForm.startDate}
-                      onChangeText={(v) => updateAdmin("startDate", v)}
+                      onChangeText={handleStartDateChange}
                       containerStyle={styles.halfInput}
                     />
                   </View>
@@ -1041,7 +1098,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: PALETTE.obsidian,
-    paddingTop: Platform.OS === "android" ? 24 : 0,
+    // Reserva espacio para el toast global (ToastService) que es un overlay
+    // absoluto en la parte superior. Sin este inset, el toast tapa el título AJUSTES.
+    paddingTop: Platform.OS === "android" ? 64 : 16,
   },
   center: {
     justifyContent: "center",
