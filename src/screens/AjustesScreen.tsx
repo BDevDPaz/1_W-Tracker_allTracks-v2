@@ -49,9 +49,7 @@ type AdminForm = {
   overtimeThresholdHours: string;
   lunchDiscountMinutes: string;
   standardLunchMinutes: string;
-  paidTransfers: boolean;
   payTransferTime: boolean;
-  multiDestination: boolean;
   allowMultiDestination: boolean;
   geofenceRadius: string;
   destinationLimit: string;
@@ -93,9 +91,7 @@ const DEFAULT_ADMIN_FORM: AdminForm = {
   overtimeThresholdHours: "8",
   lunchDiscountMinutes: "30",
   standardLunchMinutes: "30",
-  paidTransfers: true,
   payTransferTime: true,
-  multiDestination: false,
   allowMultiDestination: false,
   geofenceRadius: "100",
   destinationLimit: "5",
@@ -213,9 +209,7 @@ function adminFormFromSettings(s: UserSettings): AdminForm {
     overtimeThresholdHours: String(s.overtimeThresholdHours ?? 8),
     lunchDiscountMinutes: String(s.lunchDiscountMinutes),
     standardLunchMinutes: String(s.standardLunchMinutes ?? 30),
-    paidTransfers: s.paidTransfers,
     payTransferTime: s.payTransferTime ?? true,
-    multiDestination: s.multiDestination,
     allowMultiDestination: s.allowMultiDestination ?? false,
     geofenceRadius: String(s.geofenceRadius),
     destinationLimit: String(s.destinationLimit),
@@ -396,9 +390,7 @@ export const AjustesScreen: React.FC = () => {
                 overtimeThresholdHours: parseFloat(adminToSave.overtimeThresholdHours),
                 lunchDiscountMinutes: parseInt(adminToSave.lunchDiscountMinutes, 10),
                 standardLunchMinutes: parseInt(adminToSave.standardLunchMinutes, 10),
-                paidTransfers: adminToSave.paidTransfers,
                 payTransferTime: adminToSave.payTransferTime,
-                multiDestination: adminToSave.multiDestination,
                 allowMultiDestination: adminToSave.allowMultiDestination,
                 geofenceRadius: parseInt(adminToSave.geofenceRadius, 10),
                 destinationLimit: parseInt(adminToSave.destinationLimit, 10),
@@ -1044,27 +1036,14 @@ export const AjustesScreen: React.FC = () => {
                     />
                   </View>
                   <SwitchRow
-                    title="Modo Multi-Destino"
-                    subtitle="Permite registrar múltiples sitios en un día."
-                    value={adminForm.multiDestination}
-                    onChange={(v) => updateAdmin("multiDestination", v)}
-                  />
-                  <SwitchRow
                     title="Permitir Multi-Destino"
-                    subtitle="Permiso admin para multi-destino."
+                    subtitle="Permite registrar múltiples sitios en un día."
                     value={adminForm.allowMultiDestination}
                     onChange={(v) => updateAdmin("allowMultiDestination", v)}
                   />
                   <SwitchRow
-                    title="Traslados Pagados"
-                    subtitle="Incluir el tiempo de traslado en la nómina final."
-                    value={adminForm.paidTransfers}
-                    onChange={(v) => updateAdmin("paidTransfers", v)}
-                    disabled={!adminForm.multiDestination}
-                  />
-                  <SwitchRow
                     title="Pagar Tiempo de Traslado"
-                    subtitle="Pagar tiempo de traslado aunque no sea multi-destino."
+                    subtitle="Incluir el tiempo de traslado en la nómina final, aunque no sea multi-destino."
                     value={adminForm.payTransferTime}
                     onChange={(v) => updateAdmin("payTransferTime", v)}
                     last
