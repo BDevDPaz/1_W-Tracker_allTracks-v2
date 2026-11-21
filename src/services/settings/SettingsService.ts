@@ -4,7 +4,10 @@ import type { ISettingsService, UserSettings } from "@/types/contracts";
 
 const SETTINGS_ID = "user_settings";
 const LEGACY_SETTINGS_KEY = "user_settings";
-const MINIMUM_GEOFENCE_RADIUS_METERS = 10;
+const GEOFENCE_RADIUS_MIN_METERS = 80;
+const GEOFENCE_RADIUS_MAX_METERS = 250;
+const GEOFENCE_RADIUS_STEP_METERS = 10;
+const GEOFENCE_RADIUS_DEFAULT_METERS = 150;
 const PIN_MIN_LENGTH = 4;
 const PIN_MAX_LENGTH = 6;
 
@@ -17,7 +20,7 @@ export const DEFAULT_SETTINGS: Readonly<UserSettings> = Object.freeze({
   lunchDiscountMinutes: 30,
   standardLunchMinutes: 30,
   overtimeThresholdHours: 8,
-  geofenceRadius: 100,
+  geofenceRadius: 150,
   dailyReminder: true,
   workdayAlerts: true,
   reportReady: true,
@@ -547,7 +550,7 @@ export class SettingsService implements ISettingsService {
         settings.overtimeThresholdHours != null
           ? Number(settings.overtimeThresholdHours)
           : 8,
-      geofenceRadius: Number(settings.geofenceRadius),
+      geofenceRadius: this.clampGeofenceRadius(settings.geofenceRadius),
       dailyReminder: settings.dailyReminder,
       workdayAlerts: settings.workdayAlerts,
       reportReady: settings.reportReady,
@@ -626,10 +629,7 @@ export class SettingsService implements ISettingsService {
         input.overtimeThresholdHours,
         DEFAULT_SETTINGS.overtimeThresholdHours ?? 8,
       ),
-      geofenceRadius: this.toInteger(
-        input.geofenceRadius,
-        DEFAULT_SETTINGS.geofenceRadius,
-      ),
+      geofenceRadius: this.clampGeofenceRadius(input.geofenceRadius),
       dailyReminder: this.toBoolean(
         input.dailyReminder,
         DEFAULT_SETTINGS.dailyReminder,
@@ -757,9 +757,13 @@ export class SettingsService implements ISettingsService {
       throw new Error("Umbral de horas extra inválido.");
     if (
       !Number.isInteger(settings.geofenceRadius) ||
-      settings.geofenceRadius < MINIMUM_GEOFENCE_RADIUS_METERS
+      settings.geofenceRadius < GEOFENCE_RADIUS_MIN_METERS ||
+      settings.geofenceRadius > GEOFENCE_RADIUS_MAX_METERS ||
+      settings.geofenceRadius % GEOFENCE_RADIUS_STEP_METERS !== 0
     )
-      throw new Error(`Radio mínimo: ${MINIMUM_GEOFENCE_RADIUS_METERS}m.`);
+      throw new Error(
+        `Radio GPS debe ser entre ${GEOFENCE_RADIUS_MIN_METERS} y ${GEOFENCE_RADIUS_MAX_METERS} m, en pasos de ${GEOFENCE_RADIUS_STEP_METERS} m.`,
+      );
     if (
       !Number.isInteger(settings.destinationLimit) ||
       settings.destinationLimit <= 0
@@ -815,6 +819,19 @@ export class SettingsService implements ISettingsService {
   }
   private booleanToSQLite(value: boolean): 0 | 1 {
     return value ? 1 : 0;
+  }
+
+  private clampGeofenceRadius(value: unknown): number {
+    if (value == null || value === "") return GEOFENCE_RADIUS_DEFAULT_METERS;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return GEOFENCE_RADIUS_DEFAULT_METERS;
+    const snapped =
+      Math.round(num / GEOFENCE_RADIUS_STEP_METERS) *
+      GEOFENCE_RADIUS_STEP_METERS;
+    return Math.min(
+      GEOFENCE_RADIUS_MAX_METERS,
+      Math.max(GEOFENCE_RADIUS_MIN_METERS, snapped),
+    );
   }
 
   private toBoolean(value: unknown, fallback: boolean): boolean {
