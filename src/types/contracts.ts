@@ -225,9 +225,9 @@ export interface UserSettings {
   reportReady: boolean;
   language: "es" | "en";
   currency?: string;
-  multiDestination: boolean;
+  // P2: solo quedan allowMultiDestination + payTransferTime.
+  // Eliminados multiDestination y paidTransfers por duplicados sin efecto.
   allowMultiDestination?: boolean;
-  paidTransfers: boolean;
   payTransferTime?: boolean;
   destinationLimit: number;
   hasCompletedOnboarding: boolean;
@@ -294,9 +294,7 @@ export type AdminSettings = Pick<
   | "overtimeThresholdHours"
   | "lunchDiscountMinutes"
   | "standardLunchMinutes"
-  | "paidTransfers"
   | "payTransferTime"
-  | "multiDestination"
   | "allowMultiDestination"
   | "geofenceRadius"
   | "destinationLimit"
