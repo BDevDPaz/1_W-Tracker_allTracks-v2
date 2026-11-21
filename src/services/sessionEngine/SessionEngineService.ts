@@ -8,6 +8,20 @@ import { settingsService } from "@/services/settings/SettingsService";
 import type { Session, UserSettings } from "@/types/contracts";
 import * as Notifications from "expo-notifications";
 
+// P3: umbral fijo por ley. Almuerzo 30-60, pasos de 5.
+const OVERTIME_THRESHOLD_HOURS = 8;
+const LUNCH_MIN_MINUTES = 30;
+const LUNCH_MAX_MINUTES = 60;
+const LUNCH_STEP_MINUTES = 5;
+
+// P3: 0 = sin almuerzo, se mantiene. > 0 se corrige a 30-60, snap a pasos de 5.
+// Un valor viejo 15 o 90 no se guarda ilegal ni se descuenta ilegal.
+function clampLunchDeduction(v: number): number {
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  const snapped = Math.round(v / LUNCH_STEP_MINUTES) * LUNCH_STEP_MINUTES;
+  return Math.min(LUNCH_MAX_MINUTES, Math.max(LUNCH_MIN_MINUTES, snapped));
+}
+
 class PromiseQueue {
   private queue: (() => Promise<unknown>)[] = [];
   private isProcessing = false;
@@ -110,7 +124,8 @@ class SessionEngine {
           alias || destination,
           fresh.hourlyRate,
           fresh.overtimeMultiplier,
-          fresh.overtimeThresholdHours ?? 8,
+          // P3: fijo 8. Se ignora fresh.overtimeThresholdHours aunque venga distinto.
+          OVERTIME_THRESHOLD_HOURS,
           fresh.currency ?? "USD",
           now,
           now,
@@ -120,7 +135,7 @@ class SessionEngine {
       try {
         const alreadyInside = await this.geofence.register({
           identifier: id,
-          radius: fresh.geofenceRadius || 100,
+          radius: fresh.geofenceRadius || 150,
           destination,
         });
         if (alreadyInside) {
@@ -132,7 +147,8 @@ class SessionEngine {
               now,
               frozen.hourlyRate,
               frozen.overtimeMultiplier,
-              frozen.overtimeThresholdHours ?? 8,
+              // P3: fijo 8.
+              OVERTIME_THRESHOLD_HOURS,
               frozen.currency ?? "USD",
               now,
               id,
@@ -178,7 +194,8 @@ class SessionEngine {
             now,
             fresh.hourlyRate,
             fresh.overtimeMultiplier,
-            fresh.overtimeThresholdHours ?? 8,
+            // P3: fijo 8.
+            OVERTIME_THRESHOLD_HOURS,
             fresh.currency ?? "USD",
             now,
             session.id,
@@ -187,7 +204,7 @@ class SessionEngine {
         try {
           await this.geofence.register({
             identifier: session.id,
-            radius: fresh.geofenceRadius || 100,
+            radius: fresh.geofenceRadius || 150,
             destination: session.destination,
           });
         } catch (_error) {
@@ -221,7 +238,7 @@ class SessionEngine {
             const fresh = await this.getFreshSettings();
             await this.geofence.register({
               identifier: session.id,
-              radius: fresh.geofenceRadius || 100,
+              radius: fresh.geofenceRadius || 150,
               destination: openTransfer.target_destination,
             });
           } catch (_error) {
@@ -270,7 +287,8 @@ class SessionEngine {
                 evt.timestamp,
                 fresh.hourlyRate,
                 fresh.overtimeMultiplier,
-                fresh.overtimeThresholdHours ?? 8,
+                // P3: fijo 8.
+                OVERTIME_THRESHOLD_HOURS,
                 fresh.currency ?? "USD",
                 evt.timestamp,
                 session.id,
@@ -389,7 +407,7 @@ class SessionEngine {
         const fresh = await this.getFreshSettings();
         await this.geofence.register({
           identifier: session.id,
-          radius: fresh.geofenceRadius || 100,
+          radius: fresh.geofenceRadius || 150,
           destination: session.destination,
         });
       } catch (_error) {
@@ -399,14 +417,26 @@ class SessionEngine {
     })) as void;
   }
 
-  async startLunch(): Promise<void> {
+  // P3: confirmación explícita de almuerzo con timestamp.
+  // El LunchModal debe llamar a esta función con el timestamp exacto del tap Confirmar,
+  // no con un timestamp generado después ni con un auto-inicio sin confirmación.
+  // Exige ACTIVA. Si ya está PAUSADA, lanza error, no crea un segundo break.
+  async confirmLunchPause(exactTime?: string): Promise<void> {
     return (await this.queue.enqueue(async () => {
-      const session = await this.db.getFirstAsync<{ id: string }>(
-        `SELECT id FROM sessions WHERE state = 'ACTIVA'`,
+      const session = await this.db.getFirstAsync<{ id: string; state: string }>(
+        `SELECT id, state FROM sessions WHERE state != 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
       );
       if (!session) return;
+      if (session.state !== "ACTIVA") {
+        throw new Error(
+          "Solo puedes iniciar almuerzo si la jornada está activa.",
+        );
+      }
 
-      const now = new Date().toISOString();
+      const now = exactTime || new Date().toISOString();
+      if (Number.isNaN(Date.parse(now))) {
+        throw new Error("Timestamp de confirmación de almuerzo inválido.");
+      }
       const breakId = Crypto.randomUUID();
 
       await this.db.runAsync(
@@ -419,6 +449,12 @@ class SessionEngine {
       );
       this.notifyStateChange();
     })) as void;
+  }
+
+  async startLunch(): Promise<void> {
+    // Compatibilidad: mismo comportamiento que confirmLunchPause con timestamp actual.
+    // El flujo P3 con modal debe usar confirmLunchPause(exactTime) directamente.
+    return this.confirmLunchPause();
   }
 
   async endLunch(): Promise<void> {
@@ -477,6 +513,56 @@ class SessionEngine {
 
   async confirmExit(): Promise<void> {
     await this.finishWorkDay(0);
+  }
+
+  // P3: sesión CERRADA editada por Admin queda pendiente de validación.
+  // Requiere columna pending_validation (P3 contracts + migración DB).
+  // Si la migración no está aplicada, SQLite lanza error y NO se marca como validada por accidente.
+  async markSessionPendingValidation(sessionId: string): Promise<void> {
+    return (await this.queue.enqueue(async () => {
+      const session = await this.db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM sessions WHERE id = ? AND state = 'CERRADA'`,
+        [sessionId],
+      );
+      if (!session) return;
+      await this.db.runAsync(
+        `UPDATE sessions SET pending_validation = 1, updated_at = ? WHERE id = ?`,
+        [new Date().toISOString(), session.id],
+      );
+      this.notifyStateChange();
+    })) as void;
+  }
+
+  // P3: validación del usuario para una sesión CERRADA editada por Admin.
+  // Solo limpia pending_validation. Si no estaba pendiente, no hace nada.
+  // El PDF definitivo debe bloquearse mientras pending_validation = 1.
+  async validateSession(sessionId?: string): Promise<void> {
+    return (await this.queue.enqueue(async () => {
+      const session = sessionId
+        ? await this.db.getFirstAsync<{
+            id: string;
+            state: string;
+            pending_validation: number | null;
+          }>(
+            `SELECT id, state, pending_validation FROM sessions WHERE id = ?`,
+            [sessionId],
+          )
+        : await this.db.getFirstAsync<{
+            id: string;
+            state: string;
+            pending_validation: number | null;
+          }>(
+            `SELECT id, state, pending_validation FROM sessions WHERE state = 'CERRADA' ORDER BY created_at DESC LIMIT 1`,
+          );
+      if (!session) return;
+      if (session.state !== "CERRADA") return;
+      if (session.pending_validation !== 1) return;
+      await this.db.runAsync(
+        `UPDATE sessions SET pending_validation = 0, updated_at = ? WHERE id = ?`,
+        [new Date().toISOString(), session.id],
+      );
+      this.notifyStateChange();
+    })) as void;
   }
 
   async finishWorkDay(
@@ -559,9 +645,12 @@ class SessionEngine {
         totalMinutes = Math.round((endMs - startMs) / 60000);
         if (totalMinutes < 0) totalMinutes = 0;
       }
-      // Una sola deducción: solo lunchDeductedMinutes (valor real del modal).
+      // P3: clamp de la deducción de almuerzo a 30-60 antes de calcular.
+      // 0 = sin almuerzo, se mantiene. Un valor 15 o 90 del modal viejo se corrige.
+      const clampedLunchDeducted = clampLunchDeduction(lunchDeductedMinutes);
+      // Una sola deducción: solo clampedLunchDeducted (valor real del modal).
       // pauseMinutes se guarda como registro, no se vuelve a restar.
-      const netMinutes = Math.max(0, totalMinutes - (lunchDeductedMinutes || 0));
+      const netMinutes = Math.max(0, totalMinutes - clampedLunchDeducted);
 
       // P2: payTransferTime es el único toggle de traslado pagado.
       // Si es false, transferMinutes NO entra en paid_minutes ni en total_earnings.
@@ -583,7 +672,9 @@ class SessionEngine {
       // Fallbacks solo si snapshot es null (sesión vieja sin migración).
       const rate = session.snapshot_rate ?? 20;
       const multiplier = session.snapshot_multiplier ?? 1.5;
-      const threshold = session.snapshot_threshold_hours ?? 8;
+      // P3: umbral fijo 8 por ley. Se ignora snapshot_threshold_hours si trae otro valor.
+      // Admin no puede subirlo por encima de 8, aunque el snapshot viejo diga 10.
+      const threshold = OVERTIME_THRESHOLD_HOURS;
       const overtimeHours = Number(Math.max(0, totalHours - threshold).toFixed(2));
       const baseHours = Math.max(0, totalHours - overtimeHours);
       const totalEarnings = Number(
@@ -594,7 +685,7 @@ class SessionEngine {
         `UPDATE sessions SET state = 'CERRADA', end_time = ?, lunch_deducted_minutes = ?, total_hours = ?, total_earnings = ?, overtime_hours = ?, paid_minutes = ?, pause_minutes = ?, transfer_minutes = ?, updated_at = ? WHERE id = ?`,
         [
           now,
-          lunchDeductedMinutes,
+          clampedLunchDeducted,
           totalHours,
           totalEarnings,
           overtimeHours,
