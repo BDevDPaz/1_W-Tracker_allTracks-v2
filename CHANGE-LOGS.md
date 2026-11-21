@@ -40,6 +40,37 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 - Sin cambios funcionales de SDK 54.
 - Rama base para el upgrade.
 
+### 000042 - P1: SettingsService - radio geocerca 80-250 paso 10 default 150
+- Commit: cf8a3d6
+- Archivo: src/services/settings/SettingsService.ts
+- Cambio: DEFAULT_SETTINGS.geofenceRadius 100 -> 150.
+- Nueva regla: rango Admin 80-250 m, paso 10 m, default 150 m.
+- Nuevo clampGeofenceRadius(): null / "" / no finito -> 150, si no redondea al múltiplo de 10 más cercano y clampa a 80-250.
+- normalizeSettings y normalizePersistedSettings usan el clamp. Valor viejo 1500 en SQLite carga como 250, no rompe load().
+- validateSettings rechaza si no es entero, fuera de 80-250, o no múltiplo de 10. Mensaje: Radio GPS debe ser entre 80 y 250 m, en pasos de 10 m.
+- Eliminado MINIMUM_GEOFENCE_RADIUS_METERS = 10, ya no es la regla.
+- Verificación: npx tsc --noEmit limpio.
+
+### 000043 - P1: AjustesScreen - stepper radio GPS 80-250 paso 10 default 150
+- Commit: 67795f1
+- Archivo: src/screens/AjustesScreen.tsx
+- Cambio: DEFAULT_ADMIN_FORM.geofenceRadius "100" -> "150".
+- Eliminado Input libre de Radio GPS (Metros). Nuevo control stepper − / + paso 10, bloqueado en 80 y en 250, valor visible como "150 m", hint "80 - 250 m, pasos de 10 m. Default 150 m."
+- adminFormFromSettings clampa el valor cargado a 80-250 paso 10.
+- handleGeofenceStep(delta) hace parseInt + clamp + snap a múltiplo de 10.
+- Sin cambio en Límite Destinos/Día, Gracia, Tolerancia, ni toggles P2.
+- Verificación: npx tsc --noEmit limpio.
+
+### 000044 - P1: SettingsService.test - default radio 150, clamp y snap
+- Commit: ee8f8e6
+- Archivo: src/services/settings/SettingsService.test.ts
+- Cambio: test default vacío geofenceRadius 100 -> 150.
+- Test 200 queda igual: 200 es válido en 80-250 paso 10.
+- Test save queda igual: 150 es válido.
+- Nuevo test clamp: 1500 -> 250, 10 -> 80.
+- Nuevo test snap: 83 -> 80, 87 -> 90.
+- Verificación: npx tsc --noEmit limpio, npx jest src/services/settings/SettingsService.test.ts --no-coverage 5/5 passed.
+
 ---
 
 ## PR #2 — chore/upgrade-sdk-54
