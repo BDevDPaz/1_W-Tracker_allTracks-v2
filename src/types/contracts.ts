@@ -173,6 +173,13 @@ export interface WorkDay {
   lunchDeductedMinutes: number;
   overtimeHours: number;
   snapshotRate: number;
+  // Snapshot congelado en ACTIVA. Provisional en creación, congelado al pasar a ACTIVA.
+  // Nunca se recalcula con settings en vivo después de ACTIVA.
+  // snapshotIsApproximate = true solo para sesiones abiertas migradas con backfill.
+  snapshotMultiplier?: number;
+  snapshotThresholdHours?: number;
+  snapshotCurrency?: string;
+  snapshotIsApproximate?: boolean;
   totalEarnings: number;
   integrityType: IntegrityType;
   notes?: string;
@@ -428,6 +435,8 @@ export interface ISettingsService {
   load(): Promise<UserSettings>;
   getSettings(): UserSettings;
   save(settings: UserSettings): Promise<void>;
+  // Lectura fresca sin caché, para fondo / TaskManager / Engine. No usa load().
+  getFreshSettings?(): Promise<UserSettings>;
   // Nuevos métodos, opcionales en este paso para que tsc siga en verde.
   // En Paso 2 se implementan y se vuelven obligatorios.
   verifyAdminPin?(pin: string): Promise<boolean>;
