@@ -42,8 +42,8 @@ describe("SettingsService", () => {
       workday_alerts: 1,
       report_ready: 1,
       language: "es",
-      multi_destination: 0, // false en SQLite
-      paid_transfers: 1,
+      allow_multi_destination: 0, // false en SQLite
+      pay_transfer_time: 1, // true en SQLite
       destination_limit: 5,
       has_completed_onboarding: 1,
       updated_at: "2026-08-27T10:00:00.000Z",
@@ -53,7 +53,8 @@ describe("SettingsService", () => {
     expect(settings.hourlyRate).toBe(35);
     expect(settings.geofenceRadius).toBe(200);
     expect(settings.dailyReminder).toBe(true);
-    expect(settings.multiDestination).toBe(false);
+    expect(settings.allowMultiDestination).toBe(false);
+    expect(settings.payTransferTime).toBe(true);
   });
 
   it("al guardar, debe sanitizar textos y traducir booleanos a 1/0", async () => {
@@ -73,9 +74,7 @@ describe("SettingsService", () => {
       reportReady: true,
       language: "es",
       currency: "USD",
-      multiDestination: false,
       allowMultiDestination: false,
-      paidTransfers: true,
       payTransferTime: true,
       destinationLimit: 5,
       hasCompletedOnboarding: true,
@@ -92,7 +91,7 @@ describe("SettingsService", () => {
         "byron@test.com", // Trim y lowerCase aplicados
         30, // hourlyRate numérico
         1, // dailyReminder convertido a 1
-        0, // multiDestination convertido a 0
+        0, // allowMultiDestination convertido a 0
       ]),
     );
   });
