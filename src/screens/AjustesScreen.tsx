@@ -93,7 +93,7 @@ const DEFAULT_ADMIN_FORM: AdminForm = {
   standardLunchMinutes: "30",
   payTransferTime: true,
   allowMultiDestination: false,
-  geofenceRadius: "100",
+  geofenceRadius: "150",
   destinationLimit: "5",
   principalAddress: "",
   gracePeriodMinutes: "0",
@@ -102,6 +102,17 @@ const DEFAULT_ADMIN_FORM: AdminForm = {
   paymentMethod: "",
   currency: "USD",
 };
+
+const GEOFENCE_RADIUS_MIN = 80;
+const GEOFENCE_RADIUS_MAX = 250;
+const GEOFENCE_RADIUS_STEP = 10;
+const GEOFENCE_RADIUS_DEFAULT = 150;
+
+function clampGeofenceRadiusValue(v: number): number {
+  if (!Number.isFinite(v)) return GEOFENCE_RADIUS_DEFAULT;
+  const snapped = Math.round(v / GEOFENCE_RADIUS_STEP) * GEOFENCE_RADIUS_STEP;
+  return Math.min(GEOFENCE_RADIUS_MAX, Math.max(GEOFENCE_RADIUS_MIN, snapped));
+}
 
 const SectionTitle: React.FC<{ title: string; icon: IconName }> = ({
   title,
@@ -211,7 +222,9 @@ function adminFormFromSettings(s: UserSettings): AdminForm {
     standardLunchMinutes: String(s.standardLunchMinutes ?? 30),
     payTransferTime: s.payTransferTime ?? true,
     allowMultiDestination: s.allowMultiDestination ?? false,
-    geofenceRadius: String(s.geofenceRadius),
+    geofenceRadius: String(
+      clampGeofenceRadiusValue(s.geofenceRadius ?? GEOFENCE_RADIUS_DEFAULT),
+    ),
     destinationLimit: String(s.destinationLimit),
     principalAddress: s.principalAddress ?? "",
     gracePeriodMinutes: String(s.gracePeriodMinutes ?? 0),
@@ -307,6 +320,17 @@ export const AjustesScreen: React.FC = () => {
       }
     }
     updateAdmin("startDate", v);
+  };
+
+  const handleGeofenceStep = (delta: number) => {
+    const current = parseInt(adminForm.geofenceRadius, 10);
+    const base = Number.isFinite(current) ? current : GEOFENCE_RADIUS_DEFAULT;
+    const next = Math.min(
+      GEOFENCE_RADIUS_MAX,
+      Math.max(GEOFENCE_RADIUS_MIN, base + delta),
+    );
+    const snapped = clampGeofenceRadiusValue(next);
+    updateAdmin("geofenceRadius", String(snapped));
   };
 
   const handleSaveWorker = async () => {
@@ -509,6 +533,14 @@ export const AjustesScreen: React.FC = () => {
       </SafeAreaView>
     );
   }
+
+  const geofenceValue = parseInt(adminForm.geofenceRadius, 10);
+  const geofenceAtMin = Number.isFinite(geofenceValue)
+    ? geofenceValue <= GEOFENCE_RADIUS_MIN
+    : false;
+  const geofenceAtMax = Number.isFinite(geofenceValue)
+    ? geofenceValue >= GEOFENCE_RADIUS_MAX
+    : false;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1003,22 +1035,43 @@ export const AjustesScreen: React.FC = () => {
 
                 <Surface variant="base" style={styles.card}>
                   <SectionTitle title="Operaciones y Geocerca" icon="map-pin" />
-                  <View style={styles.row}>
-                    <Input
-                      label="Radio GPS (Metros)"
-                      keyboardType="number-pad"
-                      value={adminForm.geofenceRadius}
-                      onChangeText={(v) => updateAdmin("geofenceRadius", v)}
-                      containerStyle={styles.halfInput}
-                    />
-                    <Input
-                      label="Límite Destinos/Día"
-                      keyboardType="number-pad"
-                      value={adminForm.destinationLimit}
-                      onChangeText={(v) => updateAdmin("destinationLimit", v)}
-                      containerStyle={styles.halfInput}
-                    />
+                  <View style={styles.geofenceBlock}>
+                    <Text style={styles.segmentLabel}>Radio GPS (Metros)</Text>
+                    <View style={styles.stepperRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.stepperButton,
+                          geofenceAtMin && styles.stepperButtonDisabled,
+                        ]}
+                        onPress={() => handleGeofenceStep(-GEOFENCE_RADIUS_STEP)}
+                        disabled={geofenceAtMin}
+                      >
+                        <Text style={styles.stepperButtonText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.stepperValue}>
+                        {adminForm.geofenceRadius} m
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.stepperButton,
+                          geofenceAtMax && styles.stepperButtonDisabled,
+                        ]}
+                        onPress={() => handleGeofenceStep(GEOFENCE_RADIUS_STEP)}
+                        disabled={geofenceAtMax}
+                      >
+                        <Text style={styles.stepperButtonText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.geofenceHint}>
+                      80 - 250 m, pasos de 10 m. Default 150 m.
+                    </Text>
                   </View>
+                  <Input
+                    label="Límite Destinos/Día"
+                    keyboardType="number-pad"
+                    value={adminForm.destinationLimit}
+                    onChangeText={(v) => updateAdmin("destinationLimit", v)}
+                  />
                   <View style={styles.row}>
                     <Input
                       label="Gracia Salida (Min)"
@@ -1278,5 +1331,42 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: PALETTE.mutedGold,
+  },
+  geofenceBlock: {
+    marginBottom: SPACING.md,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: PALETTE.steelLine,
+    borderRadius: 10,
+    padding: 4,
+  },
+  stepperButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: PALETTE.obsidian,
+  },
+  stepperButtonDisabled: {
+    opacity: 0.4,
+  },
+  stepperButtonText: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: PALETTE.mutedGold,
+  },
+  stepperValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: TEXT.primary,
+  },
+  geofenceHint: {
+    fontSize: 11,
+    color: TEXT.muted,
+    marginTop: 6,
   },
 });
