@@ -478,6 +478,18 @@ Estabilización en SDK 52, upgrade a SDK 54 y fixes de jornada, historial, geofe
 - Regla futura: no reutilizar los nombres `multi_destination` / `paid_transfers` para otra cosa. Si algún día se quiere limpieza total, hacer migración aparte, no mezclada con P2/P3.
 - Verificación: `npx tsc --noEmit` limpio (sin cambio de código).
 
+### 000048 - Corrección: commit 6f8ebf3 fue P1 + P3 Engine, no solo P1
+- Commit: — (corrección de registro, documentada en este commit de changelog)
+- Archivo afectado: src/services/sessionEngine/SessionEngineService.ts, commit 6f8ebf3
+- Hecho verificado: `git show 6f8ebf3 --stat` muestra `107 insertions(+), 16 deletions(-)`, diff de 243 líneas, no 4 líneas.
+- Contenido real de 6f8ebf3:
+    - P1: 4 cambios `fresh.geofenceRadius || 100` -> `|| 150`.
+    - P3: `OVERTIME_THRESHOLD_HOURS = 8`, `LUNCH_MIN/MAX/STEP`, `clampLunchDeduction()`, `confirmLunchPause()`, `validateSession()`, uso de `pending_validation`.
+- Causa: al hacer `git add` para P1, el archivo ya tenía el borrador P3 sin commitear encima, y `git add` se llevó todo el archivo, no solo las 4 líneas P1.
+- Corrección: la entrada 000046 que describe 6f8ebf3 como solo P1 queda incorrecta en alcance. Esta entrada 000048 corrige el registro.
+- Estado actual: Engine P3 está commiteado pero incompleto. Falta migración DB para `pending_validation`, alinear firma `confirmLunchPause` entre `contracts` y Engine, y consolidar constantes duplicadas en 4 archivos. Eso se completa en los siguientes commits P3, no se reescribe historia.
+- Riesgo actual sin completar: `UPDATE sessions SET pending_validation = 1` y `SELECT pending_validation` van a fallar en runtime con `no such column` porque `DatabaseService` no tiene esa columna. `tsc` no lo detecta.
+
 ---
 
 ## QA pendiente en dispositivo (SDK 54 dev build)
