@@ -35,6 +35,15 @@ export type PillStatus =
 export type SystemHealthStatus = "OK" | "WARNING" | "ERROR";
 export type RehydrationResult = "NONE" | "RECOVERED" | "CONFLICT" | "OK";
 
+// --- P3: reglas fijas, no configurables por encima / por fuera ---
+// Umbral horas extra fijo en 8 por ley. Admin no puede subirlo.
+// Almuerzo 30-60 min, default 30. Alerta almuerzo = hora base + 5h.
+export const OVERTIME_THRESHOLD_HOURS = 8;
+export const LUNCH_MIN_MINUTES = 30;
+export const LUNCH_MAX_MINUTES = 60;
+export const LUNCH_DEFAULT_MINUTES = 30;
+export const LUNCH_ALERT_OFFSET_HOURS = 5;
+
 export type TimelineEventType =
   | "WORKDAY_START"
   | "GEOFENCE_ENTER"
@@ -74,6 +83,20 @@ export interface DailySetupPayload {
 export interface LunchModalPayload {
   lunchMinutes?: number;
   minutes?: number;
+  // P3: confirmación explícita de que la pausa fue tomada, con timestamp.
+  // Sin confirmed = true, la pausa no cuenta como confirmada legalmente.
+  confirmed?: boolean;
+  confirmedAt?: string;
+  // P3: PAUSE = pausa de mediodía (base + 5h). CLOSE = deducción al cerrar.
+  // Mismo modal, dos momentos. No son dos deducciones: el cierre usa la pausa confirmada.
+  mode?: "PAUSE" | "CLOSE";
+}
+
+// P3: payload que el Engine persiste cuando el usuario confirma la pausa.
+export interface LunchConfirmation {
+  minutes: number;
+  confirmed: boolean;
+  confirmedAt: string;
 }
 
 export type ToastType = "success" | "error" | "warning" | "info";
@@ -147,6 +170,10 @@ export interface Break {
   endTime?: string;
   durationMinutes?: number;
   isPaid?: boolean;
+  // P3: timestamp de la confirmación explícita "tomé mi pausa".
+  // Null / false = pausa registrada pero no confirmada.
+  confirmedAt?: string | null;
+  confirmed?: boolean;
 }
 
 export interface TimelineEvent {
@@ -189,6 +216,19 @@ export interface WorkDay {
   pauseMinutes: number;
   transferMinutes: number;
   destinationCount: number;
+
+  // P3: confirmación explícita de almuerzo, con timestamp. Protección legal.
+  // lunchConfirmedAt = cuando el usuario confirmó "tomé mi pausa".
+  // Null / false = no confirmado. El cierre usa la pausa confirmada, no un input suelto.
+  lunchConfirmedAt?: string | null;
+  lunchConfirmed?: boolean;
+
+  // P3: sesión cerrada editada por Admin queda pendiente de validación del usuario.
+  // Mientras pendingValidation = true, el PDF no es definitivo y debe marcarse como pendiente.
+  // validatedAt = cuando el usuario validó el ajuste.
+  pendingValidation?: boolean;
+  pendingValidationReason?: string | null;
+  validatedAt?: string | null;
 
   // Garantizamos que siempre son arreglos para evitar .map sobre undefined
   visits: DestinationVisit[];
@@ -427,6 +467,10 @@ export interface ISessionEngineService {
   handleMidnightCrossing(): Promise<void>;
   reset(): void;
   dispose(): void;
+  // P3 — opcionales en este paso para que tsc siga en verde.
+  // Se implementan en SessionEngineService.ts en el siguiente archivo P3.
+  confirmLunchPause?(minutes: number, confirmedAt: string): Promise<void>;
+  validateSession?(id: string): Promise<void>;
 }
 
 export interface ISettingsService {

@@ -10,6 +10,12 @@ const GEOFENCE_RADIUS_STEP_METERS = 10;
 const GEOFENCE_RADIUS_DEFAULT_METERS = 150;
 const PIN_MIN_LENGTH = 4;
 const PIN_MAX_LENGTH = 6;
+// P3: umbral horas extra fijo por ley. Almuerzo 30-60, default 30, pasos de 5.
+const OVERTIME_THRESHOLD_HOURS = 8;
+const LUNCH_MIN_MINUTES = 30;
+const LUNCH_MAX_MINUTES = 60;
+const LUNCH_STEP_MINUTES = 5;
+const LUNCH_DEFAULT_MINUTES = 30;
 
 export const DEFAULT_SETTINGS: Readonly<UserSettings> = Object.freeze({
   name: "",
@@ -541,15 +547,11 @@ export class SettingsService implements ISettingsService {
       reportEmail: settings.reportEmail.trim().toLowerCase(),
       baseWorkHour: settings.baseWorkHour.trim(),
       overtimeMultiplier: Number(settings.overtimeMultiplier),
-      lunchDiscountMinutes: Number(settings.lunchDiscountMinutes),
-      standardLunchMinutes:
-        settings.standardLunchMinutes != null
-          ? Number(settings.standardLunchMinutes)
-          : 30,
-      overtimeThresholdHours:
-        settings.overtimeThresholdHours != null
-          ? Number(settings.overtimeThresholdHours)
-          : 8,
+      // P3: clamp 30-60. Si viene 15 o 90, se corrige, no se guarda ilegal.
+      lunchDiscountMinutes: this.clampLunchMinutes(settings.lunchDiscountMinutes),
+      standardLunchMinutes: this.clampLunchMinutes(settings.standardLunchMinutes),
+      // P3: fijo 8. Se ignora cualquier valor distinto que venga de UI o DB vieja.
+      overtimeThresholdHours: OVERTIME_THRESHOLD_HOURS,
       geofenceRadius: this.clampGeofenceRadius(settings.geofenceRadius),
       dailyReminder: settings.dailyReminder,
       workdayAlerts: settings.workdayAlerts,
@@ -565,10 +567,9 @@ export class SettingsService implements ISettingsService {
       emergencyContact: (settings.emergencyContact ?? "").trim(),
       emergencyPhone: (settings.emergencyPhone ?? "").trim(),
       preferredStartTime: (settings.preferredStartTime ?? "06:00").trim(),
-      lunchPreferenceMinutes:
-        settings.lunchPreferenceMinutes != null
-          ? Number(settings.lunchPreferenceMinutes)
-          : 30,
+      lunchPreferenceMinutes: this.clampLunchMinutes(
+        settings.lunchPreferenceMinutes,
+      ),
       entryReminderEnabled: settings.entryReminderEnabled ?? true,
       soundEnabled: settings.soundEnabled ?? true,
       vibrationEnabled: settings.vibrationEnabled ?? true,
@@ -617,18 +618,11 @@ export class SettingsService implements ISettingsService {
         input.overtimeMultiplier,
         DEFAULT_SETTINGS.overtimeMultiplier,
       ),
-      lunchDiscountMinutes: this.toInteger(
-        input.lunchDiscountMinutes,
-        DEFAULT_SETTINGS.lunchDiscountMinutes,
-      ),
-      standardLunchMinutes: this.toInteger(
-        input.standardLunchMinutes,
-        DEFAULT_SETTINGS.standardLunchMinutes ?? 30,
-      ),
-      overtimeThresholdHours: this.toFiniteNumber(
-        input.overtimeThresholdHours,
-        DEFAULT_SETTINGS.overtimeThresholdHours ?? 8,
-      ),
+      // P3: clamp 30-60. Migra valores viejos fuera de rango a un valor legal.
+      lunchDiscountMinutes: this.clampLunchMinutes(input.lunchDiscountMinutes),
+      standardLunchMinutes: this.clampLunchMinutes(input.standardLunchMinutes),
+      // P3: fijo 8. Migra cualquier valor viejo distinto a 8.
+      overtimeThresholdHours: OVERTIME_THRESHOLD_HOURS,
       geofenceRadius: this.clampGeofenceRadius(input.geofenceRadius),
       dailyReminder: this.toBoolean(
         input.dailyReminder,
@@ -671,10 +665,7 @@ export class SettingsService implements ISettingsService {
         input.preferredStartTime,
         DEFAULT_SETTINGS.preferredStartTime ?? "06:00",
       ),
-      lunchPreferenceMinutes: this.toInteger(
-        input.lunchPreferenceMinutes,
-        DEFAULT_SETTINGS.lunchPreferenceMinutes ?? 30,
-      ),
+      lunchPreferenceMinutes: this.clampLunchMinutes(input.lunchPreferenceMinutes),
       entryReminderEnabled: this.toBoolean(
         input.entryReminderEnabled,
         DEFAULT_SETTINGS.entryReminderEnabled ?? true,
@@ -738,23 +729,31 @@ export class SettingsService implements ISettingsService {
       settings.overtimeMultiplier < 1
     )
       throw new Error("Multiplicador inválido.");
+    // P3: almuerzo 30-60, pasos de 5.
     if (
       !Number.isInteger(settings.lunchDiscountMinutes) ||
-      settings.lunchDiscountMinutes < 0
+      settings.lunchDiscountMinutes < LUNCH_MIN_MINUTES ||
+      settings.lunchDiscountMinutes > LUNCH_MAX_MINUTES ||
+      settings.lunchDiscountMinutes % LUNCH_STEP_MINUTES !== 0
     )
-      throw new Error("Descuento de almuerzo inválido.");
+      throw new Error(
+        `Descuento de almuerzo debe ser entre ${LUNCH_MIN_MINUTES} y ${LUNCH_MAX_MINUTES} min, en pasos de ${LUNCH_STEP_MINUTES} min.`,
+      );
     if (
       settings.standardLunchMinutes != null &&
       (!Number.isInteger(settings.standardLunchMinutes) ||
-        settings.standardLunchMinutes < 0)
+        settings.standardLunchMinutes < LUNCH_MIN_MINUTES ||
+        settings.standardLunchMinutes > LUNCH_MAX_MINUTES ||
+        settings.standardLunchMinutes % LUNCH_STEP_MINUTES !== 0)
     )
-      throw new Error("Almuerzo estándar inválido.");
-    if (
-      settings.overtimeThresholdHours != null &&
-      (!Number.isFinite(settings.overtimeThresholdHours) ||
-        settings.overtimeThresholdHours <= 0)
-    )
-      throw new Error("Umbral de horas extra inválido.");
+      throw new Error(
+        `Almuerzo estándar debe ser entre ${LUNCH_MIN_MINUTES} y ${LUNCH_MAX_MINUTES} min, en pasos de ${LUNCH_STEP_MINUTES} min.`,
+      );
+    // P3: fijo 8 por ley. No se acepta otro valor aunque llegue de DB vieja sin normalizar.
+    if (settings.overtimeThresholdHours !== OVERTIME_THRESHOLD_HOURS)
+      throw new Error(
+        `Umbral de horas extra es fijo ${OVERTIME_THRESHOLD_HOURS} por ley. No se puede cambiar.`,
+      );
     if (
       !Number.isInteger(settings.geofenceRadius) ||
       settings.geofenceRadius < GEOFENCE_RADIUS_MIN_METERS ||
@@ -786,12 +785,17 @@ export class SettingsService implements ISettingsService {
       !this.isValidTime(settings.preferredStartTime)
     )
       throw new Error("Hora de inicio preferida inválida.");
+    // P3: preferencia almuerzo también 30-60, pasos de 5.
     if (
       settings.lunchPreferenceMinutes != null &&
       (!Number.isInteger(settings.lunchPreferenceMinutes) ||
-        settings.lunchPreferenceMinutes < 0)
+        settings.lunchPreferenceMinutes < LUNCH_MIN_MINUTES ||
+        settings.lunchPreferenceMinutes > LUNCH_MAX_MINUTES ||
+        settings.lunchPreferenceMinutes % LUNCH_STEP_MINUTES !== 0)
     )
-      throw new Error("Preferencia de almuerzo inválida.");
+      throw new Error(
+        `Preferencia de almuerzo debe ser entre ${LUNCH_MIN_MINUTES} y ${LUNCH_MAX_MINUTES} min, en pasos de ${LUNCH_STEP_MINUTES} min.`,
+      );
     if (
       settings.timeFormat &&
       settings.timeFormat !== "12h" &&
@@ -831,6 +835,19 @@ export class SettingsService implements ISettingsService {
     return Math.min(
       GEOFENCE_RADIUS_MAX_METERS,
       Math.max(GEOFENCE_RADIUS_MIN_METERS, snapped),
+    );
+  }
+
+  // P3: mismo patrón que clampGeofenceRadius. Snap a pasos de 5 y clamp 30-60.
+  private clampLunchMinutes(value: unknown): number {
+    if (value == null || value === "") return LUNCH_DEFAULT_MINUTES;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return LUNCH_DEFAULT_MINUTES;
+    const snapped =
+      Math.round(num / LUNCH_STEP_MINUTES) * LUNCH_STEP_MINUTES;
+    return Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, snapped),
     );
   }
 

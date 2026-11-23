@@ -114,6 +114,20 @@ function clampGeofenceRadiusValue(v: number): number {
   return Math.min(GEOFENCE_RADIUS_MAX, Math.max(GEOFENCE_RADIUS_MIN, snapped));
 }
 
+// P3: Umbral horas extra fijo por ley. Almuerzo 30-60, default 30, pasos de 5.
+// Mismo patrón clamp + stepper que P1 para el radio.
+const OVERTIME_THRESHOLD_FIXED = 8;
+const LUNCH_MIN_MINUTES = 30;
+const LUNCH_MAX_MINUTES = 60;
+const LUNCH_STEP_MINUTES = 5;
+const LUNCH_DEFAULT_MINUTES = 30;
+
+function clampLunchValue(v: number): number {
+  if (!Number.isFinite(v)) return LUNCH_DEFAULT_MINUTES;
+  const snapped = Math.round(v / LUNCH_STEP_MINUTES) * LUNCH_STEP_MINUTES;
+  return Math.min(LUNCH_MAX_MINUTES, Math.max(LUNCH_MIN_MINUTES, snapped));
+}
+
 const SectionTitle: React.FC<{ title: string; icon: IconName }> = ({
   title,
   icon,
@@ -191,7 +205,10 @@ function workerFormFromSettings(s: UserSettings): WorkerForm {
     emergencyContact: s.emergencyContact ?? "",
     emergencyPhone: s.emergencyPhone ?? "",
     preferredStartTime: s.preferredStartTime ?? "06:00",
-    lunchPreferenceMinutes: String(s.lunchPreferenceMinutes ?? 30),
+    // P3: clamp 30-60. Si DB vieja trae 15 o 90, se muestra 30 o 60, no el valor ilegal.
+    lunchPreferenceMinutes: String(
+      clampLunchValue(s.lunchPreferenceMinutes ?? LUNCH_DEFAULT_MINUTES),
+    ),
     entryReminderEnabled: s.entryReminderEnabled ?? true,
     soundEnabled: s.soundEnabled ?? true,
     vibrationEnabled: s.vibrationEnabled ?? true,
@@ -217,9 +234,15 @@ function adminFormFromSettings(s: UserSettings): AdminForm {
     hourlyRate: String(s.hourlyRate),
     overtimeMultiplier: String(s.overtimeMultiplier),
     baseWorkHour: s.baseWorkHour,
-    overtimeThresholdHours: String(s.overtimeThresholdHours ?? 8),
-    lunchDiscountMinutes: String(s.lunchDiscountMinutes),
-    standardLunchMinutes: String(s.standardLunchMinutes ?? 30),
+    // P3: fijo 8. Se ignora cualquier valor viejo distinto de 8 en DB.
+    overtimeThresholdHours: String(OVERTIME_THRESHOLD_FIXED),
+    // P3: clamp 30-60.
+    lunchDiscountMinutes: String(
+      clampLunchValue(s.lunchDiscountMinutes ?? LUNCH_DEFAULT_MINUTES),
+    ),
+    standardLunchMinutes: String(
+      clampLunchValue(s.standardLunchMinutes ?? LUNCH_DEFAULT_MINUTES),
+    ),
     payTransferTime: s.payTransferTime ?? true,
     allowMultiDestination: s.allowMultiDestination ?? false,
     geofenceRadius: String(
@@ -333,28 +356,70 @@ export const AjustesScreen: React.FC = () => {
     updateAdmin("geofenceRadius", String(snapped));
   };
 
+  // P3: steppers almuerzo 30-60, pasos de 5. Mismo patrón que radio P1.
+  const handleWorkerLunchStep = (delta: number) => {
+    const current = parseInt(workerForm.lunchPreferenceMinutes, 10);
+    const base = Number.isFinite(current) ? current : LUNCH_DEFAULT_MINUTES;
+    const next = Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, base + delta),
+    );
+    updateWorker("lunchPreferenceMinutes", String(clampLunchValue(next)));
+  };
+
+  const handleAdminLunchDiscountStep = (delta: number) => {
+    const current = parseInt(adminForm.lunchDiscountMinutes, 10);
+    const base = Number.isFinite(current) ? current : LUNCH_DEFAULT_MINUTES;
+    const next = Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, base + delta),
+    );
+    updateAdmin("lunchDiscountMinutes", String(clampLunchValue(next)));
+  };
+
+  const handleAdminStandardLunchStep = (delta: number) => {
+    const current = parseInt(adminForm.standardLunchMinutes, 10);
+    const base = Number.isFinite(current) ? current : LUNCH_DEFAULT_MINUTES;
+    const next = Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, base + delta),
+    );
+    updateAdmin("standardLunchMinutes", String(clampLunchValue(next)));
+  };
+
   const handleSaveWorker = async () => {
     setSavingWorker(true);
     try {
       if (!settingsService.saveWorkerSettings) {
         throw new Error("saveWorkerSettings no disponible.");
       }
+      // P3: clamp antes de guardar, por si el form trae un valor viejo fuera de rango.
+      const clampedLunch = String(
+        clampLunchValue(parseInt(workerForm.lunchPreferenceMinutes, 10)),
+      );
+      const workerToSave: WorkerForm = {
+        ...workerForm,
+        lunchPreferenceMinutes: clampedLunch,
+      };
+      if (workerToSave.lunchPreferenceMinutes !== workerForm.lunchPreferenceMinutes) {
+        setWorkerForm(workerToSave);
+      }
       await settingsService.saveWorkerSettings({
-        phone: workerForm.phone,
-        emergencyContact: workerForm.emergencyContact,
-        emergencyPhone: workerForm.emergencyPhone,
-        preferredStartTime: workerForm.preferredStartTime,
-        lunchPreferenceMinutes: parseInt(workerForm.lunchPreferenceMinutes, 10),
-        entryReminderEnabled: workerForm.entryReminderEnabled,
-        soundEnabled: workerForm.soundEnabled,
-        vibrationEnabled: workerForm.vibrationEnabled,
-        timeFormat: workerForm.timeFormat,
-        language: workerForm.language,
-        dailyReminder: workerForm.dailyReminder,
-        workdayAlerts: workerForm.workdayAlerts,
-        reportReady: workerForm.reportReady,
+        phone: workerToSave.phone,
+        emergencyContact: workerToSave.emergencyContact,
+        emergencyPhone: workerToSave.emergencyPhone,
+        preferredStartTime: workerToSave.preferredStartTime,
+        lunchPreferenceMinutes: parseInt(workerToSave.lunchPreferenceMinutes, 10),
+        entryReminderEnabled: workerToSave.entryReminderEnabled,
+        soundEnabled: workerToSave.soundEnabled,
+        vibrationEnabled: workerToSave.vibrationEnabled,
+        timeFormat: workerToSave.timeFormat,
+        language: workerToSave.language,
+        dailyReminder: workerToSave.dailyReminder,
+        workdayAlerts: workerToSave.workdayAlerts,
+        reportReady: workerToSave.reportReady,
       });
-      setWorkerOriginal(workerForm);
+      setWorkerOriginal(workerToSave);
       ToastService.push({
         type: "success",
         text: "Ajustes de trabajador guardados.",
@@ -379,11 +444,20 @@ export const AjustesScreen: React.FC = () => {
       });
       return;
     }
-    const adminToSave: AdminForm =
-      normalizedStartDate !== adminForm.startDate
-        ? { ...adminForm, startDate: normalizedStartDate }
-        : adminForm;
-    if (adminToSave !== adminForm) {
+    // P3: forzar 8 fijo + clamp almuerzo 30-60 antes del Alert.
+    // Si DB vieja trae 10 o 15 min, aquí se corrige y se guarda corregido.
+    const adminToSave: AdminForm = {
+      ...adminForm,
+      startDate: normalizedStartDate,
+      overtimeThresholdHours: String(OVERTIME_THRESHOLD_FIXED),
+      lunchDiscountMinutes: String(
+        clampLunchValue(parseInt(adminForm.lunchDiscountMinutes, 10)),
+      ),
+      standardLunchMinutes: String(
+        clampLunchValue(parseInt(adminForm.standardLunchMinutes, 10)),
+      ),
+    };
+    if (JSON.stringify(adminToSave) !== JSON.stringify(adminForm)) {
       setAdminForm(adminToSave);
     }
 
@@ -542,6 +616,31 @@ export const AjustesScreen: React.FC = () => {
     ? geofenceValue >= GEOFENCE_RADIUS_MAX
     : false;
 
+  // P3: límites para los steppers de almuerzo.
+  const workerLunchValue = parseInt(workerForm.lunchPreferenceMinutes, 10);
+  const workerLunchAtMin = Number.isFinite(workerLunchValue)
+    ? workerLunchValue <= LUNCH_MIN_MINUTES
+    : false;
+  const workerLunchAtMax = Number.isFinite(workerLunchValue)
+    ? workerLunchValue >= LUNCH_MAX_MINUTES
+    : false;
+
+  const adminDiscountValue = parseInt(adminForm.lunchDiscountMinutes, 10);
+  const adminDiscountAtMin = Number.isFinite(adminDiscountValue)
+    ? adminDiscountValue <= LUNCH_MIN_MINUTES
+    : false;
+  const adminDiscountAtMax = Number.isFinite(adminDiscountValue)
+    ? adminDiscountValue >= LUNCH_MAX_MINUTES
+    : false;
+
+  const adminStandardValue = parseInt(adminForm.standardLunchMinutes, 10);
+  const adminStandardAtMin = Number.isFinite(adminStandardValue)
+    ? adminStandardValue <= LUNCH_MIN_MINUTES
+    : false;
+  const adminStandardAtMax = Number.isFinite(adminStandardValue)
+    ? adminStandardValue >= LUNCH_MAX_MINUTES
+    : false;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header title="AJUSTES" subtitle="CONFIGURACIÓN DEL SISTEMA" />
@@ -607,13 +706,35 @@ export const AjustesScreen: React.FC = () => {
                   onChangeText={(v) => updateWorker("preferredStartTime", v)}
                   containerStyle={styles.halfInput}
                 />
-                <Input
-                  label="Almuerzo Preferido (Min)"
-                  keyboardType="number-pad"
-                  value={workerForm.lunchPreferenceMinutes}
-                  onChangeText={(v) => updateWorker("lunchPreferenceMinutes", v)}
-                  containerStyle={styles.halfInput}
-                />
+                <View style={styles.halfInput}>
+                  <Text style={styles.segmentLabel}>Almuerzo Preferido (Min)</Text>
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.stepperButton,
+                        workerLunchAtMin && styles.stepperButtonDisabled,
+                      ]}
+                      onPress={() => handleWorkerLunchStep(-LUNCH_STEP_MINUTES)}
+                      disabled={workerLunchAtMin}
+                    >
+                      <Text style={styles.stepperButtonText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.stepperValue}>
+                      {workerForm.lunchPreferenceMinutes} m
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.stepperButton,
+                        workerLunchAtMax && styles.stepperButtonDisabled,
+                      ]}
+                      onPress={() => handleWorkerLunchStep(LUNCH_STEP_MINUTES)}
+                      disabled={workerLunchAtMax}
+                    >
+                      <Text style={styles.stepperButtonText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.geofenceHint}>30 - 60 min, pasos de 5 min.</Text>
+                </View>
               </View>
 
               <View style={styles.segmentRow}>
@@ -983,29 +1104,73 @@ export const AjustesScreen: React.FC = () => {
                       onChangeText={(v) => updateAdmin("baseWorkHour", v)}
                       containerStyle={styles.halfInput}
                     />
-                    <Input
-                      label="Umbral Horas Extra"
-                      keyboardType="numeric"
-                      value={adminForm.overtimeThresholdHours}
-                      onChangeText={(v) => updateAdmin("overtimeThresholdHours", v)}
-                      containerStyle={styles.halfInput}
-                    />
+                    <View style={styles.halfInput}>
+                      <Text style={styles.segmentLabel}>Umbral Horas Extra</Text>
+                      <View style={styles.fixedBox}>
+                        <Text style={styles.fixedValueText}>8 h</Text>
+                      </View>
+                      <Text style={styles.fixedHint}>Fijo por ley. No editable.</Text>
+                    </View>
                   </View>
                   <View style={styles.row}>
-                    <Input
-                      label="Almuerzo Descuento (Min)"
-                      keyboardType="number-pad"
-                      value={adminForm.lunchDiscountMinutes}
-                      onChangeText={(v) => updateAdmin("lunchDiscountMinutes", v)}
-                      containerStyle={styles.halfInput}
-                    />
-                    <Input
-                      label="Almuerzo Estándar (Min)"
-                      keyboardType="number-pad"
-                      value={adminForm.standardLunchMinutes}
-                      onChangeText={(v) => updateAdmin("standardLunchMinutes", v)}
-                      containerStyle={styles.halfInput}
-                    />
+                    <View style={styles.halfInput}>
+                      <Text style={styles.segmentLabel}>Almuerzo Descuento (Min)</Text>
+                      <View style={styles.stepperRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminDiscountAtMin && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminLunchDiscountStep(-LUNCH_STEP_MINUTES)}
+                          disabled={adminDiscountAtMin}
+                        >
+                          <Text style={styles.stepperButtonText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stepperValue}>
+                          {adminForm.lunchDiscountMinutes} m
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminDiscountAtMax && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminLunchDiscountStep(LUNCH_STEP_MINUTES)}
+                          disabled={adminDiscountAtMax}
+                        >
+                          <Text style={styles.stepperButtonText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.geofenceHint}>30 - 60 min, pasos de 5 min.</Text>
+                    </View>
+                    <View style={styles.halfInput}>
+                      <Text style={styles.segmentLabel}>Almuerzo Estándar (Min)</Text>
+                      <View style={styles.stepperRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminStandardAtMin && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminStandardLunchStep(-LUNCH_STEP_MINUTES)}
+                          disabled={adminStandardAtMin}
+                        >
+                          <Text style={styles.stepperButtonText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stepperValue}>
+                          {adminForm.standardLunchMinutes} m
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminStandardAtMax && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminStandardLunchStep(LUNCH_STEP_MINUTES)}
+                          disabled={adminStandardAtMax}
+                        >
+                          <Text style={styles.stepperButtonText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.geofenceHint}>30 - 60 min, pasos de 5 min.</Text>
+                    </View>
                   </View>
                   <View style={styles.row}>
                     <Input
@@ -1368,5 +1533,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: TEXT.muted,
     marginTop: 6,
+  },
+  // P3: caja fija para el umbral 8h, no editable.
+  fixedBox: {
+    backgroundColor: PALETTE.steelLine,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fixedValueText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: TEXT.primary,
+  },
+  fixedHint: {
+    fontSize: 11,
+    color: TEXT.muted,
+    marginTop: 6,
+    textAlign: "center",
   },
 });
