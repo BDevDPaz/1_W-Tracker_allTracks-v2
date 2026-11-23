@@ -1,495 +1,374 @@
-// ============================================================
-// SCREEN: ReportesScreen — Exportación y finanzas (CONSOLIDADO V2.0)
-// Versión: 2.0.0 (Workday Tracking Design System)
-// Fuente: Blueprint Pantalla Reportes | Identidad V2
-// Responsabilidad: Cálculo financiero semanal y generación de auditorías PDF.
-// ============================================================
-
-import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
-} from 'react-native';
+  Text,
+  StyleSheet,
+  Platform,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
+} from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, SummaryBlock } from '../components';
-import { PDFService } from '../services/pdf/PDFService';
-import { settingsService } from '../services/settings/SettingsService';
-import { useSessionStore } from '../stores/sessionStore';
-import { FONT, PALETTE, RADIUS, SPACING, TEXT } from '../theme';
-import { PDFReport, Session } from '../types';
-import { formatCurrency, formatHours } from '../utils/formatters';
-
-// ── TIPOS Y ESTADOS ─────────────────────────────────────────
-
-type ReportAction = 'generate' | 'share' | 'email' | 'preview' | null;
-
-interface WeeklySummaryModel {
-  periodLabel: string;
-  totalHours: number;
-  totalEarnings: number;
-  sessionCount: number;
-  manualAdjustments: number;
-  overtimeHours: number;
-  baseEarnings: number;
-  overtimeEarnings: number;
-  baseRate: number;
-  overtimeMultiplier: number;
-}
-
-// ── UTILERÍAS DE FECHA ──────────────────────────────────────
-
-const getStartOfWeek = (offset: number): Date => {
-  const now = new Date();
-  const start = new Date(now);
-  const day = start.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day; // Semana inicia lunes
-
-  start.setDate(start.getDate() + diffToMonday + offset * 7);
-  start.setHours(0, 0, 0, 0);
-  return start;
-};
-
-const getEndOfWeek = (startOfWeek: Date): Date => {
-  const end = new Date(startOfWeek);
-  end.setDate(startOfWeek.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return end;
-};
-
-const toDateKey = (date: Date): string => {
-  return date.toISOString().split('T')[0] ?? '';
-};
-
-const parseSessionDate = (dateStr: string): Date => {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  if (!year || !month || !day) return new Date(dateStr);
-  return new Date(year, month - 1, day);
-};
-
-const formatPeriodLabel = (startDate: Date, endDate: Date): string => {
-  const startStr = startDate.toLocaleDateString('es-US', { month: 'short', day: 'numeric' });
-  const endStr = endDate.toLocaleDateString('es-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  return `${startStr} - ${endStr}`;
-};
-
-const isSessionInRange = (session: Session, startDate: Date, endDate: Date): boolean => {
-  const date = parseSessionDate(session.date);
-  date.setHours(12, 0, 0, 0);
-  return date >= startDate && date <= endDate;
-};
-
-// ── COMPONENTE PRINCIPAL ────────────────────────────────────
+import { Header, Surface, Icon, Button, MetricTile } from "@/components";
+import {
+  sessionRepository,
+  PDFService,
+  settingsService,
+  ToastService,
+} from "@/services";
+import { PALETTE, FONT, SPACING, TEXT, RADIUS } from "@/theme";
+import type { Session, WeeklySummary, PDFReport } from "@/types/contracts";
+import {
+  getWeekStart,
+  formatWeekRange,
+  formatCurrency,
+  formatHours,
+} from "@/utils";
 
 export const ReportesScreen: React.FC = () => {
-  const { sessions, isLoadingSessions, loadSessions } = useSessionStore();
+  // ── ESTADO LOCAL ─────────────────────────────────────────────────────────
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
-  const [weekOffset, setWeekOffset] = useState<number>(0);
-  const [reportFilePath, setReportFilePath] = useState<string | null>(null);
-  const [loadingAction, setLoadingAction] = useState<ReportAction>(null);
+  const [summary, setSummary] = useState<WeeklySummary | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [periodLabel, setPeriodLabel] = useState("");
 
-  // Recarga silenciosa al entrar en la pestaña
-  useFocusEffect(
-    useCallback(() => {
-      loadSessions(true);
-    }, [loadSessions])
-  );
+  // ── CARGA DE DATOS (POR SEMANA) ──────────────────────────────────────────
+  const loadWeeklyData = useCallback(async (offset: number) => {
+    setLoading(true);
+    try {
+      const weekStart = getWeekStart(offset);
 
-  // ── CÁLCULO DE PERÍODOS ───────────────────────────────────
+      // Calcular el final de la semana (6 días después del lunes/inicio)
+      const startDate = new Date(weekStart + "T00:00:00");
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      const weekEnd = endDate.toISOString().split("T")[0]!;
 
-  const startOfWeek = useMemo(() => getStartOfWeek(weekOffset), [weekOffset]);
-  const endOfWeek = useMemo(() => getEndOfWeek(startOfWeek), [startOfWeek]);
-  const periodLabel = useMemo(() => formatPeriodLabel(startOfWeek, endOfWeek), [startOfWeek, endOfWeek]);
+      const summaryData = await sessionRepository.getWeeklySummary(
+        weekStart,
+        weekEnd,
+      );
+      const sessionsData = await sessionRepository.getByPeriod(
+        weekStart,
+        weekEnd,
+      );
 
-  const weeklySessions = useMemo(() => {
-    return sessions
-      .filter((s) => s.state === 'CERRADA')
-      .filter((s) => isSessionInRange(s, startOfWeek, endOfWeek))
-      .sort((a, b) => {
-        const aKey = `${a.date} ${a.startTime || '00:00'}`;
-        const bKey = `${b.date} ${b.startTime || '00:00'}`;
-        return aKey.localeCompare(bKey);
+      setSummary(summaryData);
+      setSessions(sessionsData);
+      setPeriodLabel(formatWeekRange(weekStart));
+    } catch (error) {
+      console.error("[ReportesScreen Error]", error);
+      ToastService.push({
+        type: "error",
+        text: "Error al cargar el resumen semanal.",
       });
-  }, [sessions, startOfWeek, endOfWeek]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // ── RESUMEN FINANCIERO ────────────────────────────────────
+  useEffect(() => {
+    void loadWeeklyData(weekOffset);
+  }, [weekOffset, loadWeeklyData]);
 
-  const summary = useMemo<WeeklySummaryModel>(() => {
-    const settings = settingsService.getSettings();
+  // ── HANDLERS DE NAVEGACIÓN ───────────────────────────────────────────────
+  const handlePrevWeek = () => setWeekOffset((prev) => prev - 1);
+  const handleNextWeek = () => setWeekOffset((prev) => prev + 1);
 
-    const totalHours = weeklySessions.reduce((acc, s) => acc + (s.totalHours ?? 0), 0);
-    const totalEarnings = weeklySessions.reduce((acc, s) => acc + (s.totalEarnings ?? 0), 0);
-    const overtimeHours = weeklySessions.reduce((acc, s) => acc + (s.overtimeHours ?? 0), 0);
-    const manualAdjustments = weeklySessions.filter((s) => s.integrityType === 'MANUAL').length;
-
-    const overtimeMultiplier = settings.overtimeMultiplier ?? 1.5;
-    const baseRate = weeklySessions[0]?.snapshotRate ?? settings.hourlyRate ?? 20;
-    const overtimeEarnings = overtimeHours * baseRate * overtimeMultiplier;
-    const baseEarnings = Math.max(0, totalEarnings - overtimeEarnings);
-
+  // ── EXPORTACIÓN PDF ──────────────────────────────────────────────────────
+  const buildReportObject = (): PDFReport | null => {
+    if (!summary) return null;
     return {
-      periodLabel,
-      totalHours,
-      totalEarnings,
-      sessionCount: weeklySessions.length,
-      manualAdjustments,
-      overtimeHours,
-      baseEarnings,
-      overtimeEarnings,
-      baseRate,
-      overtimeMultiplier,
-    };
-  }, [weeklySessions, periodLabel]);
-
-  const reportPayload = useMemo<PDFReport>(() => {
-    return {
-      periodLabel,
-      weekStart: toDateKey(startOfWeek),
-      weekEnd: toDateKey(endOfWeek),
+      filePath: "", // Se genera internamente en PDFService
       generatedAt: new Date().toISOString(),
+      workDaysIncluded: sessions.length,
+      periodLabel,
       summary,
-      sessions: weeklySessions,
-    } as unknown as PDFReport;
-  }, [periodLabel, startOfWeek, endOfWeek, summary, weeklySessions]);
-
-  const hasReportData = weeklySessions.length > 0;
-
-  // ── ACCIONES Y EXPORTACIÓN ────────────────────────────────
-
-  const assertHasData = useCallback((): boolean => {
-    if (hasReportData) return true;
-    Alert.alert(
-      'Sin sesiones para reportar',
-      'No hay jornadas finalizadas (Cerradas) en la semana seleccionada. Cambia de semana o finaliza una jornada.'
-    );
-    return false;
-  }, [hasReportData]);
-
-  const ensureReportFile = useCallback(async (): Promise<string> => {
-    if (!assertHasData()) throw new Error('No data');
-    if (reportFilePath) return reportFilePath;
-
-    const filePath = await PDFService.generate(reportPayload);
-    setReportFilePath(filePath);
-    return filePath;
-  }, [assertHasData, reportFilePath, reportPayload]);
-
-  const handleOffsetChange = (increment: number) => {
-    setReportFilePath(null);
-    setWeekOffset((prev) => Math.min(0, prev + increment)); // Bloquear semanas futuras
+      sessions,
+    };
   };
 
-  const executeAction = async (action: ReportAction, task: () => Promise<void>) => {
-    if (!assertHasData()) return;
+  const handleAction = async (action: "preview" | "share" | "email") => {
+    const report = buildReportObject();
+    if (!report || sessions.length === 0) {
+      ToastService.push({
+        type: "warning",
+        text: "No hay jornadas para exportar en este periodo.",
+      });
+      return;
+    }
+
+    setGenerating(true);
     try {
-      setLoadingAction(action);
-      await task();
+      const filePath = await PDFService.generate(report);
+
+      if (action === "preview") {
+        await PDFService.preview(filePath);
+      } else if (action === "share") {
+        await PDFService.share(filePath);
+      } else if (action === "email") {
+        const settings = await settingsService.load();
+        await PDFService.sendByEmail(filePath, settings.reportEmail);
+      }
     } catch (error) {
-      console.error(`[Export Error - ${action}]`, error);
-      Alert.alert('Error de exportación', 'No se pudo completar la operación. Intenta nuevamente.');
+      console.error(`[ReportesScreen Action Error - ${action}]`, error);
+      ToastService.push({
+        type: "error",
+        text: `No se pudo completar la acción: ${action}.`,
+      });
     } finally {
-      setLoadingAction(null);
+      setGenerating(false);
     }
   };
 
-  const handlePreviewReport = () =>
-    executeAction('preview', async () => {
-      const filePath = await ensureReportFile();
-      await PDFService.preview(filePath);
-    });
-
-  const handleShareReport = () =>
-    executeAction('share', async () => {
-      const filePath = await ensureReportFile();
-      await PDFService.share(filePath);
-    });
-
-  const handleEmailReport = () =>
-    executeAction('email', async () => {
-      const filePath = await ensureReportFile();
-      const settings = settingsService.getSettings();
-      await PDFService.sendByEmail(filePath, settings.reportEmail);
-    });
-
-  const isBusy = loadingAction !== null;
-
-  // ── RENDERIZADO ───────────────────────────────────────────
-
+  // ── RENDERIZADO ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Reportes</Text>
-          <Text style={styles.headerSubtitle}>EXPORTACIÓN Y FINANZAS SEMANALES</Text>
+      <Header title="REPORTES" subtitle="AUDITORÍA Y NÓMINA" />
+
+      {/* Navegador de Semanas */}
+      <View style={styles.weekNavigator}>
+        <TouchableOpacity
+          onPress={handlePrevWeek}
+          style={styles.navButton}
+          disabled={loading || generating}
+        >
+          <Icon name="chevron-right" size={24} color={PALETTE.mutedGold} />
+          {/* Usamos un truco de rotación para reusar el ícono o podríamos usar un chevron-left si lo tuviéramos */}
+          <View
+            style={{ position: "absolute", transform: [{ rotate: "180deg" }] }}
+          >
+            <Icon name="chevron-right" size={24} color={PALETTE.mutedGold} />
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.periodContainer}>
+          <Text style={styles.periodText}>
+            {loading ? "Cargando..." : periodLabel}
+          </Text>
+          {weekOffset === 0 && (
+            <Text style={styles.currentWeekBadge}>SEMANA ACTUAL</Text>
+          )}
         </View>
 
-        {/* NAVEGADOR DE SEMANA */}
-        <View style={styles.weekNavigatorCard}>
-          <TouchableOpacity
-            style={styles.weekButton}
-            onPress={() => handleOffsetChange(-1)}
-            disabled={isBusy}
-          >
-            <Text style={styles.weekButtonText}>← Atrás</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleNextWeek}
+          style={styles.navButton}
+          disabled={loading || generating || weekOffset >= 0}
+        >
+          <Icon
+            name="chevron-right"
+            size={24}
+            color={weekOffset >= 0 ? TEXT.muted : PALETTE.mutedGold}
+          />
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.weekInfoGroup}>
-            <Text style={styles.weekLabel}>SEMANA SELECCIONADA</Text>
-            <Text style={styles.weekRange}>{periodLabel}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
+        {/* Resumen de Rendimiento */}
+        <Surface variant="base" padding="lg" style={styles.summaryCard}>
+          <Text style={styles.sectionTitle}>Resumen Financiero</Text>
+
+          <View style={styles.metricsGrid}>
+            <View style={styles.metricColumn}>
+              <MetricTile
+                label="Horas Base"
+                value={formatHours(
+                  summary?.totalHours
+                    ? Math.max(
+                        0,
+                        summary.totalHours - (summary.overtimeHours || 0),
+                      )
+                    : 0,
+                )}
+              />
+            </View>
+            <View style={styles.metricColumn}>
+              <MetricTile
+                label="Horas Extra"
+                value={formatHours(summary?.overtimeHours || 0)}
+                highlight={(summary?.overtimeHours || 0) > 0}
+              />
+            </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.weekButton, weekOffset >= 0 && styles.weekButtonDisabled]}
-            onPress={() => handleOffsetChange(1)}
-            disabled={weekOffset >= 0 || isBusy}
-          >
-            <Text style={styles.weekButtonText}>Sig →</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* CONTENIDO ESTADO DE CARGA */}
-        {isLoadingSessions ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={PALETTE.mutedGold} />
-            <Text style={styles.loadingText}>Calculando resumen de nómina...</Text>
+          <View style={styles.metricsGrid}>
+            <View style={styles.metricColumn}>
+              <MetricTile
+                label="Días Trabajados"
+                value={String(summary?.workDaysCount || 0)}
+                icon="calendar"
+              />
+            </View>
+            <View style={styles.metricColumn}>
+              <MetricTile
+                label="Total Estimado"
+                value={formatCurrency(summary?.totalEarnings || 0)}
+                icon="dollar-sign"
+                highlight
+              />
+            </View>
           </View>
-        ) : (
-          <>
-            {/* MÉTRICAS PRINCIPALES */}
-            <SummaryBlock
-              metrics={[
-                { title: 'TOTAL HORAS', value: formatHours(summary.totalHours) },
-                { title: 'INGRESOS', value: formatCurrency(summary.totalEarnings), accentValue: true },
-                { title: 'JORNADAS', value: `${summary.sessionCount}` },
-              ]}
-            />
 
-            {/* DESGLOSE FINANCIERO */}
-            <View style={styles.breakdownCard}>
-              <Text style={styles.cardSectionTitle}>DESGLOSE DE TARIFA Y OVERTIME</Text>
-              
-              <View style={styles.breakdownRow}>
-                <Text style={styles.rowLabel}>Horas Ordinarias Base</Text>
-                <Text style={styles.rowValue}>
-                  {formatHours(Math.max(0, summary.totalHours - summary.overtimeHours))}
-                </Text>
-              </View>
-
-              <View style={styles.breakdownRow}>
-                <Text style={styles.rowLabel}>Horas Extra (Overtime)</Text>
-                <Text style={styles.rowValue}>{formatHours(summary.overtimeHours)}</Text>
-              </View>
-
-              <View style={styles.breakdownRow}>
-                <Text style={styles.rowLabel}>Tarifa Base Configurada</Text>
-                <Text style={styles.rowValue}>{formatCurrency(summary.baseRate)} /h</Text>
-              </View>
-
-              <View style={styles.breakdownRow}>
-                <Text style={styles.rowLabel}>Multiplicador Overtime</Text>
-                <Text style={styles.rowValue}>x{summary.overtimeMultiplier}</Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.breakdownRow}>
-                <Text style={styles.totalLabel}>TOTAL CONSOLIDADO</Text>
-                <Text style={styles.totalValue}>{formatCurrency(summary.totalEarnings)}</Text>
-              </View>
+          {(summary?.manualAdjustments || 0) > 0 && (
+            <View style={styles.alertBox}>
+              <Icon
+                name="alert-triangle"
+                size={14}
+                color={PALETTE.amberWarning}
+              />
+              <Text style={styles.alertText}>
+                Este reporte contiene {summary?.manualAdjustments} ajuste(s)
+                manual(es) etiquetados.
+              </Text>
             </View>
+          )}
+        </Surface>
 
-            {/* OPCIONES DE EXPORTACIÓN */}
-            <View style={styles.exportSection}>
-              <Text style={styles.cardSectionTitle}>EXPORTACIÓN Y COMPARTICIÓN (PDF)</Text>
+        {/* Acciones de Exportación */}
+        <Surface variant="elevated" padding="lg" style={styles.actionsCard}>
+          <Text style={styles.sectionTitle}>Exportar Auditoría (PDF)</Text>
+          <Text style={styles.description}>
+            Genera un documento con validez forense que incluye la línea de
+            tiempo de geocercas y cálculos de nómina.
+          </Text>
 
-              <View style={styles.exportBtnGroup}>
-                <Button
-                  label="Previsualizar Reporte"
-                  variant="secondary"
-                  size="md"
-                  onPress={handlePreviewReport}
-                  loading={loadingAction === 'preview'}
-                  disabled={isBusy || !hasReportData}
-                  iconName="file-text"
-                />
-
-                <Button
-                  label="Compartir PDF"
-                  variant="primary"
-                  size="md"
-                  onPress={handleShareReport}
-                  loading={loadingAction === 'share'}
-                  disabled={isBusy || !hasReportData}
-                  iconName="file-text"
-                />
-
-                <Button
-                  label="Enviar por Correo"
-                  variant="outline"
-                  size="md"
-                  onPress={handleEmailReport}
-                  loading={loadingAction === 'email'}
-                  disabled={isBusy || !hasReportData}
-                  iconName="file-text"
-                />
-              </View>
+          {generating ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={PALETTE.mutedGold} />
+              <Text style={styles.loadingText}>Procesando documento...</Text>
             </View>
-          </>
-        )}
+          ) : (
+            <View style={styles.buttonGroup}>
+              <Button
+                title="Previsualizar"
+                variant="outline"
+                onPress={() => void handleAction("preview")}
+                disabled={!summary || summary.workDaysCount === 0}
+                style={styles.actionBtn}
+              />
+              <Button
+                title="Compartir"
+                variant="secondary"
+                onPress={() => void handleAction("share")}
+                disabled={!summary || summary.workDaysCount === 0}
+                style={styles.actionBtn}
+              />
+              <Button
+                title="Enviar por Correo"
+                variant="primary"
+                onPress={() => void handleAction("email")}
+                disabled={!summary || summary.workDaysCount === 0}
+                style={{ marginTop: SPACING.md }}
+              />
+            </View>
+          )}
+        </Surface>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-// ── ESTILOS ─────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: PALETTE.obsidian,
+    paddingTop: Platform.OS === "android" ? 24 : 0,
+  },
+  weekNavigator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: PALETTE.graphite,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.steelLine,
+  },
+  navButton: {
+    padding: SPACING.sm,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  periodContainer: {
+    alignItems: "center",
+  },
+  periodText: {
+    fontSize: FONT.bodyStrong.size,
+    fontWeight: "700",
+    color: TEXT.primary,
+  },
+  currentWeekBadge: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: PALETTE.mutedGold,
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
   scrollContent: {
-    paddingBottom: 100,
-  },
-  header: {
-    marginHorizontal: SPACING.xl,
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-  headerTitle: {
-    color: TEXT.primary,
-    fontSize: FONT.h2.size,
-    fontWeight: '700',
-    fontFamily: 'Montserrat',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    color: TEXT.secondary,
-    fontSize: FONT.label.size,
-    fontWeight: '600',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    fontFamily: 'Montserrat',
-    marginTop: 2,
-  },
-  weekNavigatorCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: PALETTE.carbonMist,
-    borderRadius: RADIUS.cards,
-    borderColor: PALETTE.steelLine,
-    borderWidth: 1,
-    marginHorizontal: SPACING.xl,
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
-  },
-  weekInfoGroup: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  weekLabel: {
-    color: TEXT.muted,
-    fontSize: FONT.label.size - 1,
-    fontWeight: '700',
-    letterSpacing: 1,
-    fontFamily: 'Montserrat',
-  },
-  weekRange: {
-    color: TEXT.primary,
-    fontSize: FONT.bodyStrong.size,
-    fontWeight: '700',
-    fontFamily: 'Montserrat',
-    marginTop: 4,
-  },
-  weekButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: PALETTE.graphite,
-    borderRadius: RADIUS.pills,
-    borderWidth: 1,
-    borderColor: PALETTE.steelLine,
-  },
-  weekButtonDisabled: {
-    opacity: 0.3,
-  },
-  weekButtonText: {
-    color: TEXT.secondary,
-    fontSize: FONT.captionStrong.size,
-    fontWeight: '600',
-    fontFamily: 'Montserrat',
-  },
-  loadingContainer: {
-    padding: SPACING.xxxl,
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  loadingText: {
-    color: TEXT.secondary,
-    fontSize: FONT.body.size,
-    fontFamily: 'Montserrat',
-  },
-  breakdownCard: {
-    backgroundColor: PALETTE.graphite,
-    borderRadius: RADIUS.cards,
-    borderColor: PALETTE.steelLine,
-    borderWidth: 1,
-    marginHorizontal: SPACING.xl,
     padding: SPACING.lg,
-    marginBottom: SPACING.xl,
+    paddingBottom: SPACING.xxxl,
   },
-  cardSectionTitle: {
-    color: TEXT.secondary,
-    fontSize: FONT.label.size,
-    fontWeight: '700',
-    letterSpacing: FONT.label.letterSpacing,
-    fontFamily: 'Montserrat',
+  summaryCard: {
+    marginBottom: SPACING.lg,
+  },
+  sectionTitle: {
+    fontSize: FONT.h3.size,
+    fontWeight: "700",
+    color: TEXT.primary,
     marginBottom: SPACING.md,
   },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.xs + 2,
-  },
-  rowLabel: {
-    color: TEXT.muted,
-    fontSize: FONT.body.size - 1,
-    fontFamily: 'Montserrat',
-  },
-  rowValue: {
-    color: TEXT.primary,
-    fontSize: FONT.bodyStrong.size - 1,
-    fontWeight: '600',
-    fontFamily: 'Montserrat',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: PALETTE.steelLine,
-    marginVertical: SPACING.sm,
-  },
-  totalLabel: {
-    color: TEXT.primary,
-    fontSize: FONT.bodyStrong.size,
-    fontWeight: '700',
-    fontFamily: 'Montserrat',
-  },
-  totalValue: {
-    color: PALETTE.mutedGold,
-    fontSize: FONT.h3.size,
-    fontWeight: '700',
-    fontFamily: 'Montserrat',
-  },
-  exportSection: {
-    marginHorizontal: SPACING.xl,
-    marginBottom: SPACING.xl,
-  },
-  exportBtnGroup: {
+  metricsGrid: {
+    flexDirection: "row",
     gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  metricColumn: {
+    flex: 1,
+  },
+  alertBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: PALETTE.amberWarningBg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: PALETTE.amberWarning,
+    gap: SPACING.sm,
+  },
+  alertText: {
+    fontSize: FONT.caption.size,
+    color: PALETTE.amberWarning,
+    flex: 1,
+  },
+  actionsCard: {
+    borderColor: PALETTE.mutedGoldDark,
+  },
+  description: {
+    fontSize: FONT.body.size,
+    color: TEXT.secondary,
+    marginBottom: SPACING.lg,
+    lineHeight: 20,
+  },
+  buttonGroup: {
+    flexDirection: "column",
+    gap: SPACING.sm,
+  },
+  actionBtn: {
+    width: "100%",
+  },
+  loadingContainer: {
+    paddingVertical: SPACING.xxl,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    color: TEXT.muted,
+    marginTop: SPACING.md,
+    fontSize: FONT.body.size,
   },
 });

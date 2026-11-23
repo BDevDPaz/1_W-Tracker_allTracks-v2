@@ -1,620 +1,250 @@
-// ============================================================
-// SCREEN: OnboardingScreen
-// Ruta: src/screens/OnboardingScreen.tsx
-// Versión: 2.2.0 (Workday Tracking Platform)
-//
-// Responsabilidades:
-// - Explicar el funcionamiento general de W Tracker.
-// - Informar sobre el uso de ubicación en segundo plano.
-// - Solicitar permisos nativos de ubicación.
-// - Informar sobre restricciones de batería.
-// - Presentar el descargo de responsabilidad.
-// - Persistir la finalización del onboarding.
-// ============================================================
-
-import React, {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
-
+import React, { useState, useEffect } from "react";
 import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
   View,
-} from 'react-native';
+  Text,
+  StyleSheet,
+  ScrollView,
+  Platform,
+} from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import Animated, {
-  FadeInRight,
-  FadeOutLeft,
-  Layout,
-} from 'react-native-reanimated';
+import { Surface, Button, Input, Icon } from "@/components";
+import { geofenceService, settingsService, ToastService } from "@/services";
+import { useSessionStore } from "@/stores/sessionStore";
+import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
 
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+export const OnboardingScreen: React.FC = () => {
+  const { completeOnboarding } = useSessionStore();
 
-import { Icon } from '../components/atoms/Icon';
+  const [name, setName] = useState("");
+  const [hourlyRate, setHourlyRate] = useState("20");
+  const [reportEmail, setReportEmail] = useState("");
 
-import type {
-  IconName,
-} from '../components/atoms/Icon';
+  const [permStatus, setPermStatus] = useState<
+    "GRANTED" | "DENIED" | "NOT_DETERMINED" | "ERROR"
+  >("NOT_DETERMINED");
+  const [loading, setLoading] = useState(false);
 
-import {
-  geofenceService,
-  ToastService,
-} from '../services';
-
-import { useSessionStore } from '../stores/sessionStore';
-
-import {
-  PALETTE,
-  RADIUS,
-  TEXT,
-} from '../theme';
-
-// ── TIPOS ───────────────────────────────────────────────────
-
-interface OnboardingSlide {
-  id:
-    | 'welcome'
-    | 'location'
-    | 'battery'
-    | 'disclaimer';
-
-  icon: IconName;
-  title: string;
-  description: string;
-  actionText: string;
-  accessibilityHint: string;
-}
-
-// ── CONTENIDO ───────────────────────────────────────────────
-
-const SLIDES: ReadonlyArray<OnboardingSlide> =
-  Object.freeze([
-    {
-      id: 'welcome',
-      icon: 'shield-check',
-      title: 'Motor Operativo V2.2',
-      description:
-        'W Tracker prepara los módulos de jornadas, ' +
-        'geocercas y persistencia para ayudarte a ' +
-        'registrar tus horas de trabajo.',
-      actionText: 'Siguiente',
-      accessibilityHint:
-        'Avanza a la explicación sobre los permisos de ubicación.',
-    },
-    {
-      id: 'location',
-      icon: 'map-pin',
-      title: 'Transparencia de Ubicación',
-      description:
-        'W Tracker utiliza la ubicación en segundo plano ' +
-        'para detectar entradas y salidas de tus lugares ' +
-        'de trabajo mediante geocercas. Puedes revisar ' +
-        'o revocar este permiso desde la configuración ' +
-        'del dispositivo.',
-      actionText: 'Conceder permisos',
-      accessibilityHint:
-        'Abre las solicitudes nativas de permisos de ubicación.',
-    },
-    {
-      id: 'battery',
-      icon: 'alert-triangle',
-      title: 'Uso de Batería',
-      description:
-        Platform.OS === 'android'
-          ? 'Algunos dispositivos Android restringen la ubicación ' +
-            'cuando el ahorro de batería está activo. Revisa la ' +
-            'configuración de batería del dispositivo si las ' +
-            'geocercas dejan de responder.'
-          : 'El ahorro de batería y las restricciones del sistema ' +
-            'pueden afectar la entrega de eventos de ubicación. ' +
-            'Revisa la configuración del dispositivo si las ' +
-            'geocercas dejan de responder.',
-      actionText: 'Entendido',
-      accessibilityHint:
-        'Avanza al descargo de responsabilidad.',
-    },
-    {
-      id: 'disclaimer',
-      icon: 'file-text',
-      title: 'Descargo de Responsabilidad',
-      description:
-        'W Tracker es una herramienta de apoyo para registrar ' +
-        'jornadas y estimar ingresos. Los datos de ubicación ' +
-        'pueden verse afectados por permisos, batería o hardware. ' +
-        'Revisa siempre tus jornadas y reportes antes de utilizarlos.',
-      actionText: 'Aceptar y finalizar',
-      accessibilityHint:
-        'Guarda la aceptación y finaliza la configuración inicial.',
-    },
-  ]);
-
-// ── SCREEN ──────────────────────────────────────────────────
-
-export default function OnboardingScreen():
-  React.JSX.Element {
-  const insets = useSafeAreaInsets();
-
-  const completeOnboarding = useSessionStore(
-    (state) => state.completeOnboarding
-  );
-
-  const updateSystemHealth = useSessionStore(
-    (state) => state.updateSystemHealth
-  );
-
-  const [currentIndex, setCurrentIndex] =
-    useState(0);
-
-  const [isProcessing, setIsProcessing] =
-    useState(false);
-
-  const [feedbackMessage, setFeedbackMessage] =
-    useState<string | null>(null);
-
-  const currentSlide =
-    SLIDES[currentIndex] ?? SLIDES[0];
-
-  const isLastSlide =
-    currentIndex === SLIDES.length - 1;
-
-  const progressDescription = useMemo(
-    () =>
-      `Paso ${currentIndex + 1} de ${SLIDES.length}`,
-    [currentIndex]
-  );
-
-  const advanceToNextSlide = useCallback(() => {
-    setFeedbackMessage(null);
-
-    setCurrentIndex((previousIndex) =>
-      Math.min(
-        previousIndex + 1,
-        SLIDES.length - 1
-      )
-    );
+  useEffect(() => {
+    geofenceService.getPermissionStatus().then(setPermStatus);
   }, []);
 
-  const requestLocationPermissions =
-    useCallback(async (): Promise<void> => {
-      const granted =
-        await geofenceService.requestPermissions();
-
-      const permissionStatus =
-        await geofenceService.getPermissionStatus();
-
-      if (
-        granted &&
-        permissionStatus === 'GRANTED'
-      ) {
-        updateSystemHealth({
-          locationPermission: 'OK',
-          backgroundLocation: 'OK',
-        });
-
+  const handleRequestPermissions = async () => {
+    try {
+      const granted = await geofenceService.requestPermissions();
+      setPermStatus(granted ? "GRANTED" : "DENIED");
+      if (!granted) {
         ToastService.push({
-          type: 'success',
-          text:
-            'Permisos de ubicación concedidos correctamente.',
+          type: "warning",
+          text: 'W-Tracker necesita ubicación "Siempre" para detectar salidas automáticamente.',
         });
-
-        setFeedbackMessage(
-          'Permisos de ubicación concedidos.'
-        );
-
-        return;
+      } else {
+        ToastService.push({
+          type: "success",
+          text: "Permisos otorgados correctamente.",
+        });
       }
-
-      updateSystemHealth({
-        locationPermission:
-          permissionStatus === 'DENIED'
-            ? 'ERROR'
-            : 'WARNING',
-
-        backgroundLocation: 'WARNING',
-        geofenceActive: 'WARNING',
-      });
-
-      setFeedbackMessage(
-        'No se concedió el acceso completo a la ubicación. ' +
-          'Podrás continuar, pero el monitoreo automático ' +
-          'puede no estar disponible.'
-      );
-
+    } catch (_error) {
       ToastService.push({
-        type: 'warning',
-        text:
-          'Permisos incompletos. Puedes habilitarlos después ' +
-          'desde la configuración del dispositivo.',
+        type: "error",
+        text: "Hubo un error al solicitar permisos.",
       });
-    }, [updateSystemHealth]);
+    }
+  };
 
-  const handleNext =
-    useCallback(async (): Promise<void> => {
-      if (isProcessing) {
-        return;
-      }
+  const handleComplete = async () => {
+    if (!name.trim()) {
+      ToastService.push({
+        type: "error",
+        text: "Por favor, ingresa tu nombre.",
+      });
+      return;
+    }
 
-      setIsProcessing(true);
-      setFeedbackMessage(null);
+    const parsedRate = parseFloat(hourlyRate);
+    if (isNaN(parsedRate) || parsedRate <= 0) {
+      ToastService.push({
+        type: "error",
+        text: "Ingresa una tarifa por hora válida.",
+      });
+      return;
+    }
 
-      try {
-        if (currentSlide.id === 'location') {
-          await requestLocationPermissions();
-          advanceToNextSlide();
-          return;
-        }
-
-        if (!isLastSlide) {
-          advanceToNextSlide();
-          return;
-        }
-
-        await completeOnboarding();
-      } catch (error) {
-        console.error(
-          '[OnboardingScreen Action Error]',
-          error
-        );
-
-        const message =
-          error instanceof Error &&
-          error.message.trim()
-            ? error.message
-            : 'No se pudo completar la configuración inicial.';
-
-        setFeedbackMessage(message);
-
-        ToastService.push({
-          type: 'error',
-          text: message,
-        });
-      } finally {
-        setIsProcessing(false);
-      }
-    }, [
-      advanceToNextSlide,
-      completeOnboarding,
-      currentSlide.id,
-      isLastSlide,
-      isProcessing,
-      requestLocationPermissions,
-    ]);
+    setLoading(true);
+    try {
+      const currentSettings = await settingsService.load();
+      await settingsService.save({
+        ...currentSettings,
+        name: name.trim(),
+        hourlyRate: parsedRate,
+        reportEmail: reportEmail.trim().toLowerCase(),
+        hasCompletedOnboarding: true,
+      });
+      await completeOnboarding();
+    } catch (error) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : "Error al guardar la configuración.";
+      ToastService.push({ type: "error", text: errMsg });
+      setLoading(false);
+    }
+  };
 
   return (
-    <SafeAreaView
-      style={styles.container}
-      edges={['top', 'left', 'right']}
-    >
-      <View
-        style={styles.progressSection}
-        accessible
-        accessibilityRole="progressbar"
-        accessibilityLabel={progressDescription}
-        accessibilityValue={{
-          min: 1,
-          max: SLIDES.length,
-          now: currentIndex + 1,
-          text: progressDescription,
-        }}
-      >
-        <Text style={styles.progressText}>
-          {progressDescription}
-        </Text>
-
-        <View
-          style={styles.progressContainer}
-          importantForAccessibility="no-hide-descendants"
-        >
-          {SLIDES.map((slide, index) => {
-            const isActive =
-              currentIndex === index;
-
-            const isCompleted =
-              index < currentIndex;
-
-            return (
-              <Animated.View
-                key={slide.id}
-                layout={Layout.duration(200)}
-                style={[
-                  styles.progressDot,
-                  isCompleted
-                    ? styles.progressDotCompleted
-                    : undefined,
-                  isActive
-                    ? styles.progressDotActive
-                    : undefined,
-                ]}
-              />
-            );
-          })}
-        </View>
-      </View>
-
-      <Animated.View
-        key={currentSlide.id}
-        entering={FadeInRight.duration(350)}
-        exiting={FadeOutLeft.duration(250)}
-        style={styles.content}
-      >
-        <View
-          style={styles.iconBox}
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel={
-            `Ilustración de ${currentSlide.title}`
-          }
-        >
-          <Icon
-            name={currentSlide.icon}
-            size={56}
-            color={PALETTE.mutedGold}
-            strokeWidth={1.5}
-          />
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
+        <View style={styles.header}>
+          <View style={styles.iconContainer}>
+            <Icon name="shield-check" size={40} color={PALETTE.obsidian} />
+          </View>
+          <Text style={styles.title}>W-TRACKER</Text>
+          <Text style={styles.subtitle}>Auditoría de Jornada V2.0</Text>
         </View>
 
-        <Text
-          style={styles.title}
-          accessibilityRole="header"
-        >
-          {currentSlide.title}
-        </Text>
+        <Surface variant="elevated" style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Icon name="map-pin" size={20} color={PALETTE.mutedGold} />
+            <Text style={styles.cardTitle}>Permisos Críticos</Text>
+          </View>
+          <Text style={styles.description}>
+            Para auditar automáticamente tus horas y registrar tu línea de
+            tiempo forense, requerimos acceso a tu ubicación en todo momento
+            (Background).
+          </Text>
 
-        <Text style={styles.description}>
-          {currentSlide.description}
-        </Text>
-
-        {feedbackMessage ? (
-          <Animated.View
-            entering={FadeInRight.duration(250)}
-            style={styles.feedbackContainer}
-            accessible
-            accessibilityRole="alert"
-            accessibilityLiveRegion="polite"
-          >
-            <Icon
-              name="alert-triangle"
-              size={18}
-              color={PALETTE.mutedGold}
-              strokeWidth={2}
-            />
-
-            <Text style={styles.feedbackText}>
-              {feedbackMessage}
-            </Text>
-          </Animated.View>
-        ) : null}
-      </Animated.View>
-
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingBottom:
-              Math.max(insets.bottom, 24),
-          },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            currentSlide.actionText
-          }
-          accessibilityHint={
-            currentSlide.accessibilityHint
-          }
-          accessibilityState={{
-            disabled: isProcessing,
-            busy: isProcessing,
-          }}
-          disabled={isProcessing}
-          onPress={() => {
-            void handleNext();
-          }}
-          style={({ pressed }) => [
-            styles.button,
-            pressed && !isProcessing
-              ? styles.buttonPressed
-              : undefined,
-            isProcessing
-              ? styles.buttonDisabled
-              : undefined,
-          ]}
-        >
-          {isProcessing ? (
-            <>
-              <ActivityIndicator
-                size="small"
-                color={PALETTE.obsidian}
-              />
-
-              <Text style={styles.buttonText}>
-                Procesando...
+          {permStatus === "GRANTED" ? (
+            <View style={styles.grantedBox}>
+              <Icon name="check" size={16} color={PALETTE.successGreen} />
+              <Text style={styles.grantedText}>
+                Permisos de ubicación habilitados
               </Text>
-            </>
+            </View>
           ) : (
-            <>
-              <Text style={styles.buttonText}>
-                {currentSlide.actionText}
-              </Text>
-
-              <Icon
-                name="chevron-right"
-                size={20}
-                color={PALETTE.obsidian}
-                strokeWidth={2.5}
-              />
-            </>
+            <Button
+              title="Otorgar Permisos"
+              variant="secondary"
+              onPress={handleRequestPermissions}
+              style={{ marginTop: SPACING.sm }}
+            />
           )}
-        </Pressable>
-      </View>
+        </Surface>
+
+        <Surface variant="base" style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Icon name="dollar-sign" size={20} color={PALETTE.mutedGold} />
+            <Text style={styles.cardTitle}>Perfil Financiero</Text>
+          </View>
+          <Input
+            label="Tu Nombre"
+            placeholder="Nombre completo"
+            value={name}
+            onChangeText={setName}
+          />
+          <Input
+            label="Tarifa Base ($/hora)"
+            placeholder="20"
+            keyboardType="numeric"
+            value={hourlyRate}
+            onChangeText={setHourlyRate}
+          />
+          <Input
+            label="Correo de Auditoría (Opcional)"
+            placeholder="ejemplo@correo.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={reportEmail}
+            onChangeText={setReportEmail}
+            containerStyle={{ marginBottom: 0 }}
+          />
+        </Surface>
+
+        <Button
+          title="Empezar a Trabajar"
+          variant="primary"
+          size="lg"
+          loading={loading}
+          onPress={handleComplete}
+          style={styles.submitButton}
+        />
+      </ScrollView>
     </SafeAreaView>
   );
-}
-
-// ── ESTILOS ─────────────────────────────────────────────────
+};
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: PALETTE.obsidian,
+    paddingTop: Platform.OS === "android" ? 40 : 20,
   },
-
-  progressSection: {
-    alignItems: 'center',
-    paddingTop: 20,
-    paddingHorizontal: 24,
+  scrollContent: {
+    padding: SPACING.xl,
+    paddingBottom: SPACING.xxxl,
   },
-
-  progressText: {
-    marginBottom: 12,
-    color: TEXT.muted,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.4,
+  header: {
+    alignItems: "center",
+    marginBottom: SPACING.xxl,
   },
-
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: PALETTE.carbonMist,
-  },
-
-  progressDotCompleted: {
-    backgroundColor:
-      'rgba(197, 160, 89, 0.45)',
-  },
-
-  progressDotActive: {
-    width: 24,
+  iconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: PALETTE.mutedGold,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.md,
   },
-
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 24,
-  },
-
-  iconBox: {
-    width: 120,
-    height: 120,
-    marginBottom: 32,
-
-    alignItems: 'center',
-    justifyContent: 'center',
-
-    borderWidth: 1,
-    borderColor:
-      'rgba(197, 160, 89, 0.20)',
-    borderRadius: 60,
-
-    backgroundColor:
-      'rgba(197, 160, 89, 0.10)',
-  },
-
   title: {
-    marginBottom: 16,
-
+    fontSize: 28,
+    fontWeight: "800",
     color: TEXT.primary,
-    fontSize: 24,
-    fontWeight: '800',
-    lineHeight: 31,
-    textAlign: 'center',
+    letterSpacing: 1,
   },
-
+  subtitle: {
+    fontSize: FONT.body.size,
+    color: PALETTE.mutedGold,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  card: {
+    marginBottom: SPACING.lg,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  cardTitle: {
+    fontSize: FONT.h3.size,
+    fontWeight: "700",
+    color: TEXT.primary,
+  },
   description: {
-    maxWidth: 440,
-
+    fontSize: FONT.body.size,
     color: TEXT.secondary,
-    fontSize: 15,
-    lineHeight: 24,
-    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: SPACING.md,
   },
-
-  feedbackContainer: {
-    width: '100%',
-    maxWidth: 440,
-    marginTop: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-
+  grantedBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(52, 199, 89, 0.1)",
+    padding: SPACING.md,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor:
-      'rgba(197, 160, 89, 0.25)',
-    borderRadius: RADIUS.xs,
-
-    backgroundColor:
-      'rgba(197, 160, 89, 0.08)',
+    borderColor: PALETTE.successGreen,
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
   },
-
-  feedbackText: {
-    flex: 1,
-    color: TEXT.secondary,
-    fontSize: 13,
-    lineHeight: 19,
+  grantedText: {
+    color: PALETTE.successGreen,
+    fontWeight: "600",
+    fontSize: FONT.captionStrong.size,
   },
-
-  footer: {
-    paddingTop: 16,
-    paddingHorizontal: 24,
-  },
-
-  button: {
-    width: '100%',
-    maxWidth: 520,
-    minHeight: 56,
-    alignSelf: 'center',
-
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-
-    borderRadius: RADIUS.pills,
-    backgroundColor: PALETTE.mutedGold,
-  },
-
-  buttonPressed: {
-    opacity: 0.82,
-    transform: [
-      {
-        scale: 0.99,
-      },
-    ],
-  },
-
-  buttonDisabled: {
-    opacity: 0.65,
-  },
-
-  buttonText: {
-    color: PALETTE.obsidian,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
+  submitButton: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xxxl,
   },
 });
-

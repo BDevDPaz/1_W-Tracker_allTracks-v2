@@ -1,705 +1,1556 @@
-// ============================================================
-// SCREEN: AjustesScreen — Gobernanza y configuración (CONSOLIDADO V2.0)
-// Versión: 2.0.0 (Workday Tracking Design System)
-// Fuente: Blueprint Pantalla Ajustes | Identidad V2
-// Responsabilidad: Configuración protegida por PIN, preferencias operativas y permisos.
-// REGLAS: 
-// - Parámetros financieros y de jornada usan "AdminDraft" y requieren PIN.
-// - Preferencias de UI se guardan al instante.
-// ============================================================
-
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import {
+  View,
+  Text,
+  StyleSheet,
+  Platform,
+  ScrollView,
+  Switch,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
-  View,
-} from 'react-native';
+  TextInput,
+} from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, Icon } from '../components';
-import { IconName } from '../components/atoms/Icon';
-import { geofenceService } from '../services/geofence/GeofenceService';
-import { sessionEngine } from '../services/sessionEngine/SessionEngineService';
-import { settingsService } from '../services/settings/SettingsService';
-import { ToastService } from '../services/toast/ToastService';
-import { useSessionStore } from '../stores/sessionStore';
-import { FONT, PALETTE, RADIUS, SPACING, TEXT } from '../theme';
-import { UserSettings } from '../types';
-import { LOADING_COPY } from '../utils/formatters';
+import { Header, Surface, Input, Button, Icon } from "@/components";
+import type { IconName } from "@/components/atoms/Icon";
+import { settingsService, ToastService } from "@/services";
+import { PALETTE, FONT, SPACING, TEXT } from "@/theme";
+import type { UserSettings, SettingsTab } from "@/types/contracts";
 
-// ── TIPOS Y FALLBACKS ────────────────────────────────────────
+type WorkerForm = {
+  phone: string;
+  emergencyContact: string;
+  emergencyPhone: string;
+  preferredStartTime: string;
+  lunchPreferenceMinutes: string;
+  entryReminderEnabled: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  timeFormat: "12h" | "24h";
+  language: "es" | "en";
+  dailyReminder: boolean;
+  workdayAlerts: boolean;
+  reportReady: boolean;
+};
 
-const DEFAULT_SETTINGS: UserSettings = {
-  name: '',
-  hourlyRate: 20,
-  reportEmail: '',
-  baseWorkHour: '06:00',
-  overtimeMultiplier: 1.5,
-  lunchDiscountMinutes: 30,
-  geofenceRadius: 100,
+type AdminForm = {
+  name: string;
+  reportEmail: string;
+  address: string;
+  employeeId: string;
+  company: string;
+  position: string;
+  startDate: string;
+  hourlyRate: string;
+  overtimeMultiplier: string;
+  baseWorkHour: string;
+  overtimeThresholdHours: string;
+  lunchDiscountMinutes: string;
+  standardLunchMinutes: string;
+  payTransferTime: boolean;
+  allowMultiDestination: boolean;
+  geofenceRadius: string;
+  destinationLimit: string;
+  principalAddress: string;
+  gracePeriodMinutes: string;
+  entryToleranceMinutes: string;
+  payDay: string;
+  paymentMethod: string;
+  currency: string;
+};
+
+const DEFAULT_WORKER_FORM: WorkerForm = {
+  phone: "",
+  emergencyContact: "",
+  emergencyPhone: "",
+  preferredStartTime: "06:00",
+  lunchPreferenceMinutes: "30",
+  entryReminderEnabled: true,
+  soundEnabled: true,
+  vibrationEnabled: true,
+  timeFormat: "12h",
+  language: "es",
   dailyReminder: true,
   workdayAlerts: true,
   reportReady: true,
-  language: 'es',
-  paidTransfers: false,
-  multiDestination: false,
-  destinationLimit: 5,
-  hasCompletedOnboarding: false,
 };
 
-type PermissionStatus = 'GRANTED' | 'DENIED' | 'NOT_DETERMINED';
-type AdminLockState = 'LOCKED' | 'UNLOCKED';
-
-type AdminDraft = {
-  name: string;
-  hourlyRate: string;
-  reportEmail: string;
-  baseWorkHour: string;
-  overtimeMultiplier: string;
-  lunchDiscountMinutes: string;
-  geofenceRadius: string;
-  paidTransfers: boolean;
-  multiDestination: boolean;
+const DEFAULT_ADMIN_FORM: AdminForm = {
+  name: "",
+  reportEmail: "",
+  address: "",
+  employeeId: "",
+  company: "",
+  position: "",
+  startDate: "",
+  hourlyRate: "20",
+  overtimeMultiplier: "1.5",
+  baseWorkHour: "06:00",
+  overtimeThresholdHours: "8",
+  lunchDiscountMinutes: "30",
+  standardLunchMinutes: "30",
+  payTransferTime: true,
+  allowMultiDestination: false,
+  geofenceRadius: "150",
+  destinationLimit: "5",
+  principalAddress: "",
+  gracePeriodMinutes: "0",
+  entryToleranceMinutes: "0",
+  payDay: "",
+  paymentMethod: "",
+  currency: "USD",
 };
 
-// ── UTILERÍAS DE DRAFT Y VALIDACIÓN ──────────────────────────
+const GEOFENCE_RADIUS_MIN = 80;
+const GEOFENCE_RADIUS_MAX = 250;
+const GEOFENCE_RADIUS_STEP = 10;
+const GEOFENCE_RADIUS_DEFAULT = 150;
 
-const createAdminDraft = (source: UserSettings): AdminDraft => ({
-  name: source.name || '',
-  hourlyRate: String(source.hourlyRate ?? 20),
-  reportEmail: source.reportEmail || '',
-  baseWorkHour: source.baseWorkHour || '06:00',
-  overtimeMultiplier: String(source.overtimeMultiplier ?? 1.5),
-  lunchDiscountMinutes: String(source.lunchDiscountMinutes ?? 30),
-  geofenceRadius: String(source.geofenceRadius ?? 100),
-  paidTransfers: source.paidTransfers ?? false,
-  multiDestination: source.multiDestination ?? false,
-});
+function clampGeofenceRadiusValue(v: number): number {
+  if (!Number.isFinite(v)) return GEOFENCE_RADIUS_DEFAULT;
+  const snapped = Math.round(v / GEOFENCE_RADIUS_STEP) * GEOFENCE_RADIUS_STEP;
+  return Math.min(GEOFENCE_RADIUS_MAX, Math.max(GEOFENCE_RADIUS_MIN, snapped));
+}
 
-const areAdminDraftsEqual = (left: AdminDraft, right: AdminDraft): boolean => {
-  return (
-    left.name === right.name &&
-    left.hourlyRate === right.hourlyRate &&
-    left.reportEmail === right.reportEmail &&
-    left.baseWorkHour === right.baseWorkHour &&
-    left.overtimeMultiplier === right.overtimeMultiplier &&
-    left.lunchDiscountMinutes === right.lunchDiscountMinutes &&
-    left.geofenceRadius === right.geofenceRadius &&
-    left.paidTransfers === right.paidTransfers &&
-    left.multiDestination === right.multiDestination
-  );
-};
+// P3: Umbral horas extra fijo por ley. Almuerzo 30-60, default 30, pasos de 5.
+// Mismo patrón clamp + stepper que P1 para el radio.
+const OVERTIME_THRESHOLD_FIXED = 8;
+const LUNCH_MIN_MINUTES = 30;
+const LUNCH_MAX_MINUTES = 60;
+const LUNCH_STEP_MINUTES = 5;
+const LUNCH_DEFAULT_MINUTES = 30;
 
-const isValidTime = (value: string): boolean => {
-  if (!/^\d{2}:\d{2}$/.test(value)) return false;
-  const [hours, minutes] = value.split(':').map(Number);
-  return Number.isInteger(hours) && Number.isInteger(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
-};
+function clampLunchValue(v: number): number {
+  if (!Number.isFinite(v)) return LUNCH_DEFAULT_MINUTES;
+  const snapped = Math.round(v / LUNCH_STEP_MINUTES) * LUNCH_STEP_MINUTES;
+  return Math.min(LUNCH_MAX_MINUTES, Math.max(LUNCH_MIN_MINUTES, snapped));
+}
 
-const isValidEmail = (value: string): boolean => {
-  if (value.trim().length === 0) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-};
-
-const parseNumberInput = (value: string, fallback: number): number => {
-  const parsed = Number(value.replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const parseIntegerInput = (value: string, fallback: number): number => {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-// ── COMPONENTES INTERNOS V2 ──────────────────────────────────
-
-const FieldInput: React.FC<{
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  iconName?: IconName;
-  keyboardType?: 'default' | 'numeric' | 'email-address';
-  placeholder?: string;
-  editable?: boolean;
-}> = ({ label, value, onChangeText, iconName, keyboardType = 'default', placeholder, editable = true }) => (
-  <View style={styles.fieldGroup}>
-    <Text style={styles.fieldLabel}>{label}</Text>
-    <View style={[styles.inputWrapper, !editable && styles.inputWrapperDisabled]}>
-      {iconName && <Icon name={iconName} size={18} color={TEXT.muted} />}
-      <TextInput
-        style={[styles.input, !editable && styles.inputDisabled]}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        placeholder={placeholder}
-        placeholderTextColor={TEXT.muted}
-        editable={editable}
-        selectTextOnFocus={editable}
-      />
-    </View>
+const SectionTitle: React.FC<{ title: string; icon: IconName }> = ({
+  title,
+  icon,
+}) => (
+  <View style={styles.sectionHeader}>
+    <Icon name={icon} size={18} color={PALETTE.mutedGold} />
+    <Text style={styles.sectionTitleText}>{title}</Text>
   </View>
 );
 
 const SwitchRow: React.FC<{
   title: string;
-  subtitle?: string;
+  subtitle: string;
   value: boolean;
-  onValueChange: (value: boolean) => void;
+  onChange: (v: boolean) => void;
   disabled?: boolean;
-}> = ({ title, subtitle, value, onValueChange, disabled = false }) => (
-  <View style={styles.switchRow}>
-    <View style={styles.switchTextGroup}>
-      <Text style={[styles.switchTitle, disabled && styles.textDisabled]}>{title}</Text>
-      {subtitle && <Text style={styles.switchSubtitle}>{subtitle}</Text>}
+  last?: boolean;
+}> = ({ title, subtitle, value, onChange, disabled, last }) => (
+  <View style={[styles.switchRow, last ? styles.switchRowLast : null]}>
+    <View style={styles.switchTextContainer}>
+      <Text style={styles.switchTitle}>{title}</Text>
+      <Text style={styles.switchSubtitle}>{subtitle}</Text>
     </View>
     <Switch
+      trackColor={{
+        false: PALETTE.steelLine,
+        true: PALETTE.mutedGoldDark,
+      }}
+      thumbColor={value ? PALETTE.mutedGold : TEXT.muted}
+      onValueChange={onChange}
       value={value}
-      onValueChange={onValueChange}
       disabled={disabled}
-      trackColor={{ false: PALETTE.steelLine, true: PALETTE.mutedGold }}
-      thumbColor={value ? PALETTE.obsidian : TEXT.muted}
     />
   </View>
 );
 
-const SectionCard: React.FC<{ title: string; hint?: string; children: React.ReactNode }> = ({ title, hint, children }) => (
-  <View style={styles.sectionCard}>
-    <Text style={styles.sectionTitle}>{title}</Text>
-    {hint && <Text style={styles.sectionHint}>{hint}</Text>}
-    {children}
+const MaskedRow: React.FC<{ label: string; value: string }> = ({
+  label,
+  value,
+}) => (
+  <View style={styles.maskedRow}>
+    <Text style={styles.maskedLabel}>{label}</Text>
+    <Text style={styles.maskedValue}>{value}</Text>
   </View>
 );
 
-// ── PANTALLA PRINCIPAL ───────────────────────────────────────
+// Normaliza Fecha Inicio a YYYY-MM-DD.
+// Acepta: "" (vacío, campo opcional), "20190308", "2019/03/08", "2019-03-08".
+// Retorna null si el formato es inválido o la fecha no existe (ej: 20191340, 20190230).
+function normalizeStartDate(raw: string): string | null {
+  const v = raw.trim();
+  if (v === "") return "";
+  let candidate = v;
+  if (/^\d{8}$/.test(v)) {
+    candidate = `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+  } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(v)) {
+    candidate = v.replace(/\//g, "-");
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    return null;
+  }
+  const [yStr, mStr, dStr] = candidate.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return candidate;
+}
+
+function workerFormFromSettings(s: UserSettings): WorkerForm {
+  return {
+    phone: s.phone ?? "",
+    emergencyContact: s.emergencyContact ?? "",
+    emergencyPhone: s.emergencyPhone ?? "",
+    preferredStartTime: s.preferredStartTime ?? "06:00",
+    // P3: clamp 30-60. Si DB vieja trae 15 o 90, se muestra 30 o 60, no el valor ilegal.
+    lunchPreferenceMinutes: String(
+      clampLunchValue(s.lunchPreferenceMinutes ?? LUNCH_DEFAULT_MINUTES),
+    ),
+    entryReminderEnabled: s.entryReminderEnabled ?? true,
+    soundEnabled: s.soundEnabled ?? true,
+    vibrationEnabled: s.vibrationEnabled ?? true,
+    timeFormat: s.timeFormat ?? "12h",
+    language: s.language,
+    dailyReminder: s.dailyReminder,
+    workdayAlerts: s.workdayAlerts,
+    reportReady: s.reportReady,
+  };
+}
+
+function adminFormFromSettings(s: UserSettings): AdminForm {
+  const rawStartDate = s.startDate ?? "";
+  const normalizedStartDate = normalizeStartDate(rawStartDate);
+  return {
+    name: s.name,
+    reportEmail: s.reportEmail,
+    address: s.address ?? "",
+    employeeId: s.employeeId ?? "",
+    company: s.company ?? "",
+    position: s.position ?? "",
+    startDate: normalizedStartDate ?? rawStartDate,
+    hourlyRate: String(s.hourlyRate),
+    overtimeMultiplier: String(s.overtimeMultiplier),
+    baseWorkHour: s.baseWorkHour,
+    // P3: fijo 8. Se ignora cualquier valor viejo distinto de 8 en DB.
+    overtimeThresholdHours: String(OVERTIME_THRESHOLD_FIXED),
+    // P3: clamp 30-60.
+    lunchDiscountMinutes: String(
+      clampLunchValue(s.lunchDiscountMinutes ?? LUNCH_DEFAULT_MINUTES),
+    ),
+    standardLunchMinutes: String(
+      clampLunchValue(s.standardLunchMinutes ?? LUNCH_DEFAULT_MINUTES),
+    ),
+    payTransferTime: s.payTransferTime ?? true,
+    allowMultiDestination: s.allowMultiDestination ?? false,
+    geofenceRadius: String(
+      clampGeofenceRadiusValue(s.geofenceRadius ?? GEOFENCE_RADIUS_DEFAULT),
+    ),
+    destinationLimit: String(s.destinationLimit),
+    principalAddress: s.principalAddress ?? "",
+    gracePeriodMinutes: String(s.gracePeriodMinutes ?? 0),
+    entryToleranceMinutes: String(s.entryToleranceMinutes ?? 0),
+    payDay: s.payDay ?? "",
+    paymentMethod: s.paymentMethod ?? "",
+    currency: s.currency ?? "USD",
+  };
+}
 
 export const AjustesScreen: React.FC = () => {
-  const { activeSession, updateSystemHealth } = useSessionStore();
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("worker");
 
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [savedSettings, setSavedSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [adminDraft, setAdminDraft] = useState<AdminDraft>(createAdminDraft(DEFAULT_SETTINGS));
-  const [adminState, setAdminState] = useState<AdminLockState>('LOCKED');
-  
-  const [adminPin, setAdminPin] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSavingPreference, setIsSavingPreference] = useState(false);
-  const [isRequestingPermissions, setIsRequestingPermissions] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [permissionStatus, setPermissionStatus] = useState<PermissionStatus>('NOT_DETERMINED');
+  const [workerForm, setWorkerForm] = useState<WorkerForm>(DEFAULT_WORKER_FORM);
+  const [workerOriginal, setWorkerOriginal] =
+    useState<WorkerForm>(DEFAULT_WORKER_FORM);
+  const [adminForm, setAdminForm] = useState<AdminForm>(DEFAULT_ADMIN_FORM);
+  const [adminOriginal, setAdminOriginal] =
+    useState<AdminForm>(DEFAULT_ADMIN_FORM);
 
-  const isAdminUnlocked = adminState === 'UNLOCKED';
-  const savedAdminDraft = useMemo(() => createAdminDraft(savedSettings), [savedSettings]);
-  const hasAdminChanges = useMemo(() => !areAdminDraftsEqual(adminDraft, savedAdminDraft), [adminDraft, savedAdminDraft]);
+  const [savingWorker, setSavingWorker] = useState(false);
+  const [savingAdmin, setSavingAdmin] = useState(false);
 
-  // ── LOADERS E INICIALIZACIÓN ───────────────────────────────
-
-  const refreshPermissionStatus = useCallback(async () => {
-    try {
-      const status = await geofenceService.getPermissionStatus();
-      setPermissionStatus(status as PermissionStatus);
-
-      updateSystemHealth({
-        locationPermission: status === 'GRANTED' ? 'OK' : status === 'DENIED' ? 'ERROR' : 'WARNING',
-        backgroundLocation: status === 'GRANTED' ? 'OK' : status === 'DENIED' ? 'ERROR' : 'WARNING',
-      });
-    } catch (error) {
-      console.error('[Permission Status Error]', error);
-      setPermissionStatus('NOT_DETERMINED');
-      updateSystemHealth({ locationPermission: 'WARNING', backgroundLocation: 'WARNING' });
-    }
-  }, [updateSystemHealth]);
+  // PIN Admin
+  const [hasPin, setHasPin] = useState(false);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [settingPin, setSettingPin] = useState(false);
+  const [showChangePin, setShowChangePin] = useState(false);
+  const [oldPin, setOldPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [changingPin, setChangingPin] = useState(false);
+  const [lastAdminChangeAt, setLastAdminChangeAt] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadCurrentSettings = async () => {
+    const loadData = async () => {
       try {
-        const currentData = await settingsService.load();
-        setSettings(currentData);
-        setSavedSettings(currentData);
-        setAdminDraft(createAdminDraft(currentData));
-      } catch (error) {
-        console.error('Error cargando ajustes', error);
-        ToastService.push({ type: 'warning', text: 'Se cargó la configuración por defecto' });
+        const currentSettings = await settingsService.load();
+        const w = workerFormFromSettings(currentSettings);
+        const a = adminFormFromSettings(currentSettings);
+        setWorkerForm(w);
+        setWorkerOriginal(w);
+        setAdminForm(a);
+        setAdminOriginal(a);
+        setLastAdminChangeAt(currentSettings.lastAdminChangeAt ?? null);
+        if (settingsService.hasAdminPin) {
+          const has = await settingsService.hasAdminPin();
+          setHasPin(has);
+        } else {
+          setHasPin(Boolean(currentSettings.adminPinHash));
+        }
+      } catch (_error) {
+        ToastService.push({
+          type: "error",
+          text: "Error al cargar la configuración.",
+        });
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
-
-    loadCurrentSettings();
-    refreshPermissionStatus();
-  }, [refreshPermissionStatus]);
-
-  // ── MANEJADORES DE ESTADO (DRAFTS Y PREFERENCIAS) ──────────
-
-  const updateAdminDraft = useCallback(<K extends keyof AdminDraft>(key: K, value: AdminDraft[K]) => {
-    setAdminDraft((prev) => ({ ...prev, [key]: value }));
+    void loadData();
   }, []);
 
-  const savePreference = useCallback(async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
-    if (hasAdminChanges) {
-      Alert.alert('Cambios pendientes', 'Guarda o cancela los cambios administrativos antes de modificar preferencias.');
-      return;
-    }
+  const isWorkerDirty = useMemo(
+    () => JSON.stringify(workerForm) !== JSON.stringify(workerOriginal),
+    [workerForm, workerOriginal],
+  );
 
-    const nextSettings = { ...settings, [key]: value };
-    setSettings(nextSettings);
-    setIsSavingPreference(true);
+  const isAdminDirty = useMemo(
+    () => JSON.stringify(adminForm) !== JSON.stringify(adminOriginal),
+    [adminForm, adminOriginal],
+  );
 
-    try {
-      await settingsService.save(nextSettings);
-      setSavedSettings(nextSettings);
-      setAdminDraft(createAdminDraft(nextSettings));
+  const updateWorker = (field: keyof WorkerForm, value: string | boolean) => {
+    setWorkerForm((prev) => ({ ...prev, [field]: value }));
+  };
 
-      if (key === 'reportReady') {
-        updateSystemHealth({ notificationsReady: value ? 'OK' : 'WARNING' });
+  const updateAdmin = (field: keyof AdminForm, value: string | boolean) => {
+    setAdminForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Al teclear 8 dígitos seguidos (20190308), normaliza en vivo a 2019-03-08.
+  const handleStartDateChange = (v: string) => {
+    if (/^\d{8}$/.test(v.trim())) {
+      const n = normalizeStartDate(v);
+      if (n !== null) {
+        updateAdmin("startDate", n);
+        return;
       }
-      ToastService.push({ type: 'success', text: 'Preferencia operativa actualizada' });
+    }
+    updateAdmin("startDate", v);
+  };
+
+  const handleGeofenceStep = (delta: number) => {
+    const current = parseInt(adminForm.geofenceRadius, 10);
+    const base = Number.isFinite(current) ? current : GEOFENCE_RADIUS_DEFAULT;
+    const next = Math.min(
+      GEOFENCE_RADIUS_MAX,
+      Math.max(GEOFENCE_RADIUS_MIN, base + delta),
+    );
+    const snapped = clampGeofenceRadiusValue(next);
+    updateAdmin("geofenceRadius", String(snapped));
+  };
+
+  // P3: steppers almuerzo 30-60, pasos de 5. Mismo patrón que radio P1.
+  const handleWorkerLunchStep = (delta: number) => {
+    const current = parseInt(workerForm.lunchPreferenceMinutes, 10);
+    const base = Number.isFinite(current) ? current : LUNCH_DEFAULT_MINUTES;
+    const next = Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, base + delta),
+    );
+    updateWorker("lunchPreferenceMinutes", String(clampLunchValue(next)));
+  };
+
+  const handleAdminLunchDiscountStep = (delta: number) => {
+    const current = parseInt(adminForm.lunchDiscountMinutes, 10);
+    const base = Number.isFinite(current) ? current : LUNCH_DEFAULT_MINUTES;
+    const next = Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, base + delta),
+    );
+    updateAdmin("lunchDiscountMinutes", String(clampLunchValue(next)));
+  };
+
+  const handleAdminStandardLunchStep = (delta: number) => {
+    const current = parseInt(adminForm.standardLunchMinutes, 10);
+    const base = Number.isFinite(current) ? current : LUNCH_DEFAULT_MINUTES;
+    const next = Math.min(
+      LUNCH_MAX_MINUTES,
+      Math.max(LUNCH_MIN_MINUTES, base + delta),
+    );
+    updateAdmin("standardLunchMinutes", String(clampLunchValue(next)));
+  };
+
+  const handleSaveWorker = async () => {
+    setSavingWorker(true);
+    try {
+      if (!settingsService.saveWorkerSettings) {
+        throw new Error("saveWorkerSettings no disponible.");
+      }
+      // P3: clamp antes de guardar, por si el form trae un valor viejo fuera de rango.
+      const clampedLunch = String(
+        clampLunchValue(parseInt(workerForm.lunchPreferenceMinutes, 10)),
+      );
+      const workerToSave: WorkerForm = {
+        ...workerForm,
+        lunchPreferenceMinutes: clampedLunch,
+      };
+      if (workerToSave.lunchPreferenceMinutes !== workerForm.lunchPreferenceMinutes) {
+        setWorkerForm(workerToSave);
+      }
+      await settingsService.saveWorkerSettings({
+        phone: workerToSave.phone,
+        emergencyContact: workerToSave.emergencyContact,
+        emergencyPhone: workerToSave.emergencyPhone,
+        preferredStartTime: workerToSave.preferredStartTime,
+        lunchPreferenceMinutes: parseInt(workerToSave.lunchPreferenceMinutes, 10),
+        entryReminderEnabled: workerToSave.entryReminderEnabled,
+        soundEnabled: workerToSave.soundEnabled,
+        vibrationEnabled: workerToSave.vibrationEnabled,
+        timeFormat: workerToSave.timeFormat,
+        language: workerToSave.language,
+        dailyReminder: workerToSave.dailyReminder,
+        workdayAlerts: workerToSave.workdayAlerts,
+        reportReady: workerToSave.reportReady,
+      });
+      setWorkerOriginal(workerToSave);
+      ToastService.push({
+        type: "success",
+        text: "Ajustes de trabajador guardados.",
+      });
     } catch (error) {
-      console.error('[Save Preference Error]', error);
-      setSettings(savedSettings);
-      setAdminDraft(createAdminDraft(savedSettings));
-      Alert.alert('Error al guardar', 'Intenta nuevamente en unos segundos.');
+      const errMsg =
+        error instanceof Error ? error.message : "Error al guardar.";
+      ToastService.push({ type: "error", text: errMsg });
     } finally {
-      setIsSavingPreference(false);
+      setSavingWorker(false);
     }
-  }, [hasAdminChanges, settings, savedSettings, updateSystemHealth]);
-
-  const buildSettingsFromAdminDraft = useCallback((): UserSettings => {
-    return {
-      ...settings,
-      name: adminDraft.name,
-      hourlyRate: parseNumberInput(adminDraft.hourlyRate, savedSettings.hourlyRate || 20),
-      reportEmail: adminDraft.reportEmail,
-      baseWorkHour: adminDraft.baseWorkHour,
-      overtimeMultiplier: parseNumberInput(adminDraft.overtimeMultiplier, savedSettings.overtimeMultiplier || 1.5),
-      lunchDiscountMinutes: parseIntegerInput(adminDraft.lunchDiscountMinutes, savedSettings.lunchDiscountMinutes || 30),
-      geofenceRadius: parseIntegerInput(adminDraft.geofenceRadius, savedSettings.geofenceRadius || 100),
-      paidTransfers: adminDraft.paidTransfers,
-      multiDestination: adminDraft.multiDestination,
-    };
-  }, [adminDraft, settings, savedSettings]);
-
-  // ── MANEJADORES ADMINISTRATIVOS ────────────────────────────
-
-  const validateAdminDraft = useCallback((): UserSettings | null => {
-    const hourlyRate = Number(adminDraft.hourlyRate.replace(',', '.'));
-    const overtimeMultiplier = Number(adminDraft.overtimeMultiplier.replace(',', '.'));
-    const lunchDiscountMinutes = parseInt(adminDraft.lunchDiscountMinutes, 10);
-    const geofenceRadius = parseInt(adminDraft.geofenceRadius, 10);
-
-    if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
-      Alert.alert('Valor inválido', 'La tarifa por hora debe ser mayor a 0.');
-      return null;
-    }
-    if (!isValidTime(adminDraft.baseWorkHour)) {
-      Alert.alert('Formato inválido', 'La hora base debe tener formato HH:MM (ej. 06:00).');
-      return null;
-    }
-    if (!Number.isFinite(overtimeMultiplier) || overtimeMultiplier < 1.0) {
-      Alert.alert('Valor inválido', 'El multiplicador de overtime no puede ser menor a 1.0.');
-      return null;
-    }
-    if (!Number.isFinite(lunchDiscountMinutes) || lunchDiscountMinutes < 0) {
-      Alert.alert('Valor inválido', 'El descuento de almuerzo no puede ser negativo.');
-      return null;
-    }
-    if (!Number.isFinite(geofenceRadius) || geofenceRadius < 10) {
-      Alert.alert('Valor inválido', 'El radio de geocerca debe ser de al menos 10 metros.');
-      return null;
-    }
-    if (!isValidEmail(adminDraft.reportEmail)) {
-      Alert.alert('Formato inválido', 'El correo para reportes no tiene un formato válido.');
-      return null;
-    }
-
-    return buildSettingsFromAdminDraft();
-  }, [adminDraft, buildSettingsFromAdminDraft]);
-
-  const handleUnlockAdmin = () => {
-    if (adminPin.length >= 4) {
-      setAdminDraft(createAdminDraft(savedSettings));
-      setAdminState('UNLOCKED');
-      setAdminPin('');
-      ToastService.push({ type: 'info', text: 'Zona administrativa desbloqueada' });
-    } else {
-      Alert.alert('Acceso protegido', 'Ingresa al menos 4 dígitos para desbloquear.');
-    }
-  };
-
-  const handleCancelAdmin = () => {
-    setAdminDraft(createAdminDraft(savedSettings));
-    setSettings(savedSettings);
-    setAdminState('LOCKED');
-    setAdminPin('');
-    ToastService.push({ type: 'info', text: 'Cambios administrativos descartados' });
-  };
-
-  const handleLockAdmin = () => {
-    if (!hasAdminChanges) {
-      setAdminState('LOCKED');
-      setAdminPin('');
-      ToastService.push({ type: 'info', text: 'Zona administrativa bloqueada' });
-      return;
-    }
-
-    Alert.alert('Cambios sin guardar', '¿Deseas descartar los cambios administrativos y bloquear la sección?', [
-      { text: 'Seguir editando', style: 'cancel' },
-      {
-        text: 'Descartar y bloquear',
-        style: 'destructive',
-        onPress: () => {
-          setAdminDraft(createAdminDraft(savedSettings));
-          setSettings(savedSettings);
-          setAdminState('LOCKED');
-          setAdminPin('');
-        },
-      },
-    ]);
   };
 
   const handleSaveAdmin = async () => {
-    const nextSettings = validateAdminDraft();
-    if (!nextSettings) return;
-
-    setIsSaving(true);
-    try {
-      const previousRadius = savedSettings.geofenceRadius;
-      await settingsService.save(nextSettings);
-
-      // Re-registro de geocerca si cambió el radio y hay sesión activa
-      if (previousRadius !== nextSettings.geofenceRadius) {
-        const activeEngineSession = sessionEngine.getActiveSession();
-        if (activeEngineSession?._lat != null && activeEngineSession?._lng != null) {
-          try {
-            await geofenceService.unregister(activeEngineSession.id);
-            await geofenceService.register({
-              identifier: activeEngineSession.id,
-              latitude: activeEngineSession._lat,
-              longitude: activeEngineSession._lng,
-              radius: nextSettings.geofenceRadius,
-            });
-            updateSystemHealth({ geofenceActive: 'OK' });
-          } catch (geoError) {
-            console.warn('[Geofence Re-register Warning]', geoError);
-            updateSystemHealth({ geofenceActive: 'WARNING' });
-          }
-        }
-      }
-
-      setSettings(nextSettings);
-      setSavedSettings(nextSettings);
-      setAdminDraft(createAdminDraft(nextSettings));
-      setAdminState('LOCKED');
-      setAdminPin('');
-      ToastService.push({ type: 'success', text: 'Configuración de gobernanza guardada' });
-    } catch (error: any) {
-      console.error('[Save Admin Settings Error]', error);
-      Alert.alert('Error al guardar', error.message || 'Verifica los datos e intenta de nuevo.');
-    } finally {
-      setIsSaving(false);
+    // Validar + normalizar startDate ANTES del Alert de confirmación.
+    // Si es inválido, no se abre el Alert y no se guarda nada.
+    const normalizedStartDate = normalizeStartDate(adminForm.startDate);
+    if (normalizedStartDate === null) {
+      ToastService.push({
+        type: "error",
+        text: "Fecha Inicio debe ser YYYY-MM-DD, ej: 2019-03-08.",
+      });
+      return;
     }
+    // P3: forzar 8 fijo + clamp almuerzo 30-60 antes del Alert.
+    // Si DB vieja trae 10 o 15 min, aquí se corrige y se guarda corregido.
+    const adminToSave: AdminForm = {
+      ...adminForm,
+      startDate: normalizedStartDate,
+      overtimeThresholdHours: String(OVERTIME_THRESHOLD_FIXED),
+      lunchDiscountMinutes: String(
+        clampLunchValue(parseInt(adminForm.lunchDiscountMinutes, 10)),
+      ),
+      standardLunchMinutes: String(
+        clampLunchValue(parseInt(adminForm.standardLunchMinutes, 10)),
+      ),
+    };
+    if (JSON.stringify(adminToSave) !== JSON.stringify(adminForm)) {
+      setAdminForm(adminToSave);
+    }
+
+    Alert.alert(
+      "Guardar cambios de Administrador",
+      "Estos cambios afectan nómina, geocerca y control. ¿Confirmas guardar?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Guardar",
+          onPress: async () => {
+            setSavingAdmin(true);
+            try {
+              if (!settingsService.saveAdminSettings) {
+                throw new Error("saveAdminSettings no disponible.");
+              }
+              await settingsService.saveAdminSettings({
+                name: adminToSave.name,
+                reportEmail: adminToSave.reportEmail,
+                address: adminToSave.address,
+                employeeId: adminToSave.employeeId,
+                company: adminToSave.company,
+                position: adminToSave.position,
+                startDate: adminToSave.startDate,
+                hourlyRate: parseFloat(adminToSave.hourlyRate),
+                overtimeMultiplier: parseFloat(adminToSave.overtimeMultiplier),
+                baseWorkHour: adminToSave.baseWorkHour,
+                overtimeThresholdHours: parseFloat(adminToSave.overtimeThresholdHours),
+                lunchDiscountMinutes: parseInt(adminToSave.lunchDiscountMinutes, 10),
+                standardLunchMinutes: parseInt(adminToSave.standardLunchMinutes, 10),
+                payTransferTime: adminToSave.payTransferTime,
+                allowMultiDestination: adminToSave.allowMultiDestination,
+                geofenceRadius: parseInt(adminToSave.geofenceRadius, 10),
+                destinationLimit: parseInt(adminToSave.destinationLimit, 10),
+                principalAddress: adminToSave.principalAddress,
+                gracePeriodMinutes: parseInt(adminToSave.gracePeriodMinutes, 10),
+                entryToleranceMinutes: parseInt(adminToSave.entryToleranceMinutes, 10),
+                payDay: adminToSave.payDay,
+                paymentMethod: adminToSave.paymentMethod,
+                currency: adminToSave.currency,
+              });
+              setAdminOriginal(adminToSave);
+              setLastAdminChangeAt(new Date().toISOString());
+              ToastService.push({
+                type: "success",
+                text: "Ajustes de administrador guardados.",
+              });
+            } catch (error) {
+              const errMsg =
+                error instanceof Error ? error.message : "Error al guardar.";
+              ToastService.push({ type: "error", text: errMsg });
+            } finally {
+              setSavingAdmin(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
-  // ── MANEJADORES DE PERMISOS ────────────────────────────────
-
-  const handleReviewPermissions = async () => {
-    setIsRequestingPermissions(true);
+  const handleUnlock = async () => {
+    setPinError("");
+    if (pinInput.length < 4) {
+      setPinError("Ingresa tu PIN de 4 a 6 dígitos.");
+      return;
+    }
+    setUnlocking(true);
     try {
-      const granted = await geofenceService.requestPermissions();
-      await refreshPermissionStatus();
-      if (granted) {
-        ToastService.push({ type: 'success', text: 'Permisos de ubicación activados' });
-      } else {
-        Alert.alert('Permisos incompletos', 'Activa los permisos de ubicación en "Siempre" desde la configuración de tu dispositivo.');
+      if (!settingsService.verifyAdminPin) throw new Error("PIN no disponible.");
+      const ok = await settingsService.verifyAdminPin(pinInput);
+      if (!ok) {
+        setPinError("PIN incorrecto.");
+        setPinInput("");
+        return;
       }
+      setIsAdminUnlocked(true);
+      setPinInput("");
+      ToastService.push({ type: "success", text: "Administrador desbloqueado." });
     } catch (error) {
-      console.error('[Request Permissions Error]', error);
-      Alert.alert('Error', 'No se pudieron revisar los permisos de ubicación.');
+      const errMsg = error instanceof Error ? error.message : "Error al verificar PIN.";
+      setPinError(errMsg);
     } finally {
-      setIsRequestingPermissions(false);
+      setUnlocking(false);
     }
   };
 
-  // ── RENDERIZADO ───────────────────────────────────────────
+  const handleCreatePin = async () => {
+    setPinError("");
+    if (pinInput.length < 4 || pinInput.length > 6 || !/^\d+$/.test(pinInput)) {
+      setPinError("El PIN debe ser de 4 a 6 dígitos.");
+      return;
+    }
+    if (pinInput !== pinConfirm) {
+      setPinError("Los PIN no coinciden.");
+      return;
+    }
+    setSettingPin(true);
+    try {
+      if (!settingsService.setAdminPin) throw new Error("PIN no disponible.");
+      await settingsService.setAdminPin(pinInput);
+      setHasPin(true);
+      setIsAdminUnlocked(true);
+      setPinInput("");
+      setPinConfirm("");
+      ToastService.push({ type: "success", text: "PIN de administrador creado." });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Error al crear PIN.";
+      setPinError(errMsg);
+    } finally {
+      setSettingPin(false);
+    }
+  };
 
-  if (isLoading) {
+  const handleChangePin = async () => {
+    setPinError("");
+    if (!/^\d{4,6}$/.test(oldPin) || !/^\d{4,6}$/.test(newPin)) {
+      setPinError("Ambos PIN deben ser de 4 a 6 dígitos.");
+      return;
+    }
+    setChangingPin(true);
+    try {
+      if (!settingsService.changeAdminPin) throw new Error("PIN no disponible.");
+      await settingsService.changeAdminPin(oldPin, newPin);
+      setOldPin("");
+      setNewPin("");
+      setShowChangePin(false);
+      ToastService.push({ type: "success", text: "PIN cambiado correctamente." });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Error al cambiar PIN.";
+      setPinError(errMsg);
+    } finally {
+      setChangingPin(false);
+    }
+  };
+
+  const handleLockAdmin = () => {
+    setIsAdminUnlocked(false);
+    setPinInput("");
+    setPinError("");
+    setShowChangePin(false);
+  };
+
+  if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={PALETTE.mutedGold} />
-          <Text style={styles.loadingText}>Cargando ajustes del sistema...</Text>
-        </View>
+      <SafeAreaView style={[styles.safeArea, styles.center]}>
+        <ActivityIndicator size="large" color={PALETTE.mutedGold} />
       </SafeAreaView>
     );
   }
 
-  const locationGranted = permissionStatus === 'GRANTED';
+  const geofenceValue = parseInt(adminForm.geofenceRadius, 10);
+  const geofenceAtMin = Number.isFinite(geofenceValue)
+    ? geofenceValue <= GEOFENCE_RADIUS_MIN
+    : false;
+  const geofenceAtMax = Number.isFinite(geofenceValue)
+    ? geofenceValue >= GEOFENCE_RADIUS_MAX
+    : false;
+
+  // P3: límites para los steppers de almuerzo.
+  const workerLunchValue = parseInt(workerForm.lunchPreferenceMinutes, 10);
+  const workerLunchAtMin = Number.isFinite(workerLunchValue)
+    ? workerLunchValue <= LUNCH_MIN_MINUTES
+    : false;
+  const workerLunchAtMax = Number.isFinite(workerLunchValue)
+    ? workerLunchValue >= LUNCH_MAX_MINUTES
+    : false;
+
+  const adminDiscountValue = parseInt(adminForm.lunchDiscountMinutes, 10);
+  const adminDiscountAtMin = Number.isFinite(adminDiscountValue)
+    ? adminDiscountValue <= LUNCH_MIN_MINUTES
+    : false;
+  const adminDiscountAtMax = Number.isFinite(adminDiscountValue)
+    ? adminDiscountValue >= LUNCH_MAX_MINUTES
+    : false;
+
+  const adminStandardValue = parseInt(adminForm.standardLunchMinutes, 10);
+  const adminStandardAtMin = Number.isFinite(adminStandardValue)
+    ? adminStandardValue <= LUNCH_MIN_MINUTES
+    : false;
+  const adminStandardAtMax = Number.isFinite(adminStandardValue)
+    ? adminStandardValue >= LUNCH_MAX_MINUTES
+    : false;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardRoot}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          
-          {/* HEADER */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Ajustes</Text>
-            <Text style={styles.headerSubtitle}>GOBERNANZA Y CONFIGURACIÓN</Text>
-          </View>
+      <Header title="AJUSTES" subtitle="CONFIGURACIÓN DEL SISTEMA" />
 
-          {/* 1. PERFIL LABORAL Y FINANCIERO */}
-          <SectionCard 
-            title="PERFIL LABORAL Y FINANCIERO" 
-            hint={isAdminUnlocked ? 'Edición administrativa habilitada.' : 'Desbloquea la zona administrativa para editar.'}
-          >
-            <FieldInput
-              label="Nombre del Operario"
-              iconName="user"
-              value={adminDraft.name}
-              onChangeText={(v) => updateAdminDraft('name', v)}
-              editable={isAdminUnlocked}
-            />
-            <FieldInput
-              label="Tarifa Base por Hora (USD)"
-              iconName="briefcase"
-              value={adminDraft.hourlyRate}
-              onChangeText={(v) => updateAdminDraft('hourlyRate', v)}
-              keyboardType="numeric"
-              editable={isAdminUnlocked}
-            />
-            <FieldInput
-              label="Correo para Reportes PDF"
-              iconName="mail"
-              value={adminDraft.reportEmail}
-              onChangeText={(v) => updateAdminDraft('reportEmail', v)}
-              keyboardType="email-address"
-              placeholder="ejemplo@empresa.com"
-              editable={isAdminUnlocked}
-            />
-          </SectionCard>
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "worker" && styles.tabButtonActive]}
+          onPress={() => setActiveTab("worker")}
+        >
+          <Text style={[styles.tabText, activeTab === "worker" && styles.tabTextActive]}>
+            TRABAJADOR
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "admin" && styles.tabButtonActive]}
+          onPress={() => setActiveTab("admin")}
+        >
+          <Text style={[styles.tabText, activeTab === "admin" && styles.tabTextActive]}>
+            ADMINISTRADOR {hasPin && !isAdminUnlocked ? "🔒" : hasPin ? "🔓" : ""}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-          {/* 2. PARÁMETROS DE JORNADA Y GEOCERCA */}
-          <SectionCard 
-            title="PARÁMETROS DE JORNADA Y GEOCERCA" 
-            hint={isAdminUnlocked ? 'Ten precaución al alterar radios y multiplicadores.' : 'Bloqueado por seguridad.'}
-          >
-            <FieldInput
-              label="Hora Base (Formato HH:MM)"
-              iconName="clock"
-              value={adminDraft.baseWorkHour}
-              onChangeText={(v) => updateAdminDraft('baseWorkHour', v)}
-              editable={isAdminUnlocked}
-            />
-            <FieldInput
-              label="Multiplicador Overtime (≥ 1.0)"
-              iconName="percent"
-              value={adminDraft.overtimeMultiplier}
-              onChangeText={(v) => updateAdminDraft('overtimeMultiplier', v)}
-              keyboardType="numeric"
-              editable={isAdminUnlocked}
-            />
-            <FieldInput
-              label="Descuento Almuerzo por Defecto (Min)"
-              iconName="coffee"
-              value={adminDraft.lunchDiscountMinutes}
-              onChangeText={(v) => updateAdminDraft('lunchDiscountMinutes', v)}
-              keyboardType="numeric"
-              editable={isAdminUnlocked}
-            />
-            <FieldInput
-              label="Radio de Geocerca (Metros)"
-              iconName="map-pin"
-              value={adminDraft.geofenceRadius}
-              onChangeText={(v) => updateAdminDraft('geofenceRadius', v)}
-              keyboardType="numeric"
-              editable={isAdminUnlocked}
-            />
-            <SwitchRow
-              title="Traslados Remunerados"
-              subtitle="Contabilizar tiempo de tránsito entre destinos"
-              value={adminDraft.paidTransfers}
-              onValueChange={(v) => updateAdminDraft('paidTransfers', v)}
-              disabled={!isAdminUnlocked}
-            />
-            <SwitchRow
-              title="Soporte Multi-Destino"
-              subtitle="Permitir múltiples check-ins por jornada"
-              value={adminDraft.multiDestination}
-              onValueChange={(v) => updateAdminDraft('multiDestination', v)}
-              disabled={!isAdminUnlocked}
-            />
-          </SectionCard>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        automaticallyAdjustKeyboardInsets
+      >
+        {activeTab === "worker" ? (
+          <>
+            <Surface variant="base" style={styles.card}>
+              <SectionTitle title="Contacto y Emergencia" icon="navigation" />
+              <Input
+                label="Teléfono"
+                placeholder="Ej: (818) 555-0123"
+                keyboardType="phone-pad"
+                value={workerForm.phone}
+                onChangeText={(v) => updateWorker("phone", v)}
+              />
+              <Input
+                label="Contacto de Emergencia"
+                placeholder="Nombre del contacto"
+                value={workerForm.emergencyContact}
+                onChangeText={(v) => updateWorker("emergencyContact", v)}
+              />
+              <Input
+                label="Teléfono de Emergencia"
+                placeholder="Teléfono de emergencia"
+                keyboardType="phone-pad"
+                value={workerForm.emergencyPhone}
+                onChangeText={(v) => updateWorker("emergencyPhone", v)}
+                containerStyle={{ marginBottom: 0 }}
+              />
+            </Surface>
 
-          {/* 3. ZONA ADMINISTRATIVA (BLOQUEO PIN) */}
-          <View style={[styles.adminControlBlock, isAdminUnlocked && styles.adminControlBlockUnlocked]}>
-            <View style={styles.adminHeader}>
-              <Icon name={isAdminUnlocked ? "unlock" : "lock"} size={18} color={isAdminUnlocked ? PALETTE.successGreen : TEXT.primary} />
-              <Text style={styles.adminTitle}>Zona Administrativa {isAdminUnlocked && 'Desbloqueada'}</Text>
-            </View>
-
-            {!isAdminUnlocked ? (
-              <View style={styles.adminLockedContent}>
-                <TextInput
-                  style={styles.pinInput}
-                  value={adminPin}
-                  onChangeText={setAdminPin}
-                  secureTextEntry
-                  keyboardType="numeric"
-                  maxLength={8}
-                  placeholder="PIN o Contraseña de acceso"
-                  placeholderTextColor={TEXT.muted}
+            <Surface variant="base" style={styles.card}>
+              <SectionTitle title="Preferencias Operativas" icon="map-pin" />
+              <View style={styles.row}>
+                <Input
+                  label="Inicio Preferido (HH:MM)"
+                  placeholder="06:00"
+                  value={workerForm.preferredStartTime}
+                  onChangeText={(v) => updateWorker("preferredStartTime", v)}
+                  containerStyle={styles.halfInput}
                 />
-                <Button label="Desbloquear para Editar" variant="secondary" size="md" onPress={handleUnlockAdmin} fullWidth />
-              </View>
-            ) : (
-              <View style={styles.adminUnlockedContent}>
-                <Button
-                  label="Guardar Cambios Administrativos"
-                  variant="primary"
-                  size="md"
-                  onPress={handleSaveAdmin}
-                  disabled={!hasAdminChanges || isSaving}
-                  loading={isSaving}
-                  loadingText={LOADING_COPY.saveSettings}
-                  iconName="shield-check"
-                  fullWidth
-                />
-                <View style={styles.adminActionRow}>
-                  <Button label="Cancelar" variant="secondary" size="md" onPress={handleCancelAdmin} disabled={isSaving} style={{ flex: 1 }} />
-                  <Button label="Bloquear" variant="outline" size="md" onPress={handleLockAdmin} disabled={isSaving} style={{ flex: 1 }} />
+                <View style={styles.halfInput}>
+                  <Text style={styles.segmentLabel}>Almuerzo Preferido (Min)</Text>
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.stepperButton,
+                        workerLunchAtMin && styles.stepperButtonDisabled,
+                      ]}
+                      onPress={() => handleWorkerLunchStep(-LUNCH_STEP_MINUTES)}
+                      disabled={workerLunchAtMin}
+                    >
+                      <Text style={styles.stepperButtonText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.stepperValue}>
+                      {workerForm.lunchPreferenceMinutes} m
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.stepperButton,
+                        workerLunchAtMax && styles.stepperButtonDisabled,
+                      ]}
+                      onPress={() => handleWorkerLunchStep(LUNCH_STEP_MINUTES)}
+                      disabled={workerLunchAtMax}
+                    >
+                      <Text style={styles.stepperButtonText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.geofenceHint}>30 - 60 min, pasos de 5 min.</Text>
                 </View>
-                {hasAdminChanges && <Text style={styles.dirtyHint}>* Tienes cambios sin guardar.</Text>}
               </View>
-            )}
-          </View>
 
-          {/* 4. PREFERENCIAS OPERATIVAS */}
-          <SectionCard title="PREFERENCIAS OPERATIVAS" hint="Estos ajustes se guardan automáticamente al cambiarlos.">
-            <SwitchRow
-              title="Recordatorios Diarios"
-              subtitle="Notificar para iniciar jornada"
-              value={settings.dailyReminder}
-              onValueChange={(v) => savePreference('dailyReminder', v)}
-              disabled={isSavingPreference}
-            />
-            <SwitchRow
-              title="Alertas de Jornada"
-              subtitle="Avisos sobre overtime o geocercas"
-              value={settings.workdayAlerts}
-              onValueChange={(v) => savePreference('workdayAlerts', v)}
-              disabled={isSavingPreference}
-            />
-            <SwitchRow
-              title="Reportes Listos"
-              subtitle="Aviso cuando finaliza la auditoría"
-              value={settings.reportReady}
-              onValueChange={(v) => savePreference('reportReady', v)}
-              disabled={isSavingPreference}
-            />
-
-            <View style={styles.languageSection}>
-              <Text style={styles.fieldLabel}>IDIOMA DE LA INTERFAZ</Text>
-              <View style={styles.languageRow}>
-                {(['es', 'en'] as const).map((lang) => (
+              <View style={styles.segmentRow}>
+                <Text style={styles.segmentLabel}>Formato de hora</Text>
+                <View style={styles.segmentContainer}>
                   <TouchableOpacity
-                    key={lang}
-                    style={[styles.langBtn, settings.language === lang && styles.langBtnActive, isSavingPreference && styles.langBtnDisabled]}
-                    onPress={() => savePreference('language', lang)}
-                    disabled={isSavingPreference}
-                    activeOpacity={0.8}
+                    style={[
+                      styles.segmentButton,
+                      workerForm.timeFormat === "12h" && styles.segmentButtonActive,
+                    ]}
+                    onPress={() => updateWorker("timeFormat", "12h")}
                   >
-                    <Text style={[styles.langBtnText, settings.language === lang && styles.langBtnTextActive]}>
-                      {lang === 'es' ? 'Español' : 'English'}
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        workerForm.timeFormat === "12h" && styles.segmentTextActive,
+                      ]}
+                    >
+                      12h
                     </Text>
                   </TouchableOpacity>
-                ))}
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentButton,
+                      workerForm.timeFormat === "24h" && styles.segmentButtonActive,
+                    ]}
+                    onPress={() => updateWorker("timeFormat", "24h")}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        workerForm.timeFormat === "24h" && styles.segmentTextActive,
+                      ]}
+                    >
+                      24h
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </SectionCard>
 
-          {/* 5. UBICACIÓN Y PERMISOS NATIVOS */}
-          <SectionCard title="PERMISOS DEL DISPOSITIVO">
-            <SwitchRow title="Acceso a Ubicación (GPS)" value={locationGranted} onValueChange={handleReviewPermissions} />
-            <SwitchRow title="Monitoreo en Background" value={locationGranted} onValueChange={handleReviewPermissions} />
-            
-            <Text style={[styles.permissionStatusText, !locationGranted && styles.permissionStatusError]}>
-              Estado: {permissionStatus === 'GRANTED' ? 'Concedidos (Siempre)' : permissionStatus === 'DENIED' ? 'Denegados' : 'No determinados'}
-            </Text>
+              <View style={styles.segmentRow}>
+                <Text style={styles.segmentLabel}>Idioma</Text>
+                <View style={styles.segmentContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentButton,
+                      workerForm.language === "es" && styles.segmentButtonActive,
+                    ]}
+                    onPress={() => updateWorker("language", "es")}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        workerForm.language === "es" && styles.segmentTextActive,
+                      ]}
+                    >
+                      ES
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentButton,
+                      workerForm.language === "en" && styles.segmentButtonActive,
+                    ]}
+                    onPress={() => updateWorker("language", "en")}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        workerForm.language === "en" && styles.segmentTextActive,
+                      ]}
+                    >
+                      EN
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Surface>
 
-            <TouchableOpacity
-              style={[styles.reviewPermissionsBtn, isRequestingPermissions && styles.langBtnDisabled]}
-              onPress={handleReviewPermissions}
-              activeOpacity={0.8}
-              disabled={isRequestingPermissions}
-            >
-              <Text style={styles.reviewPermissionsText}>
-                {isRequestingPermissions ? 'Validando con el OS...' : 'Revisar Permisos Nativos'}
-              </Text>
-            </TouchableOpacity>
-          </SectionCard>
+            <Surface variant="base" style={styles.card}>
+              <SectionTitle title="Notificaciones y Sonido" icon="navigation" />
+              <SwitchRow
+                title="Recordatorio de entrada"
+                subtitle="Aviso antes de tu hora preferida."
+                value={workerForm.entryReminderEnabled}
+                onChange={(v) => updateWorker("entryReminderEnabled", v)}
+              />
+              <SwitchRow
+                title="Recordatorio diario"
+                subtitle="Resumen diario del sistema."
+                value={workerForm.dailyReminder}
+                onChange={(v) => updateWorker("dailyReminder", v)}
+              />
+              <SwitchRow
+                title="Alertas de jornada"
+                subtitle="Alertas de entrada, salida y almuerzo."
+                value={workerForm.workdayAlerts}
+                onChange={(v) => updateWorker("workdayAlerts", v)}
+              />
+              <SwitchRow
+                title="Reporte listo"
+                subtitle="Aviso cuando el reporte esté listo."
+                value={workerForm.reportReady}
+                onChange={(v) => updateWorker("reportReady", v)}
+              />
+              <SwitchRow
+                title="Sonido"
+                subtitle="Sonidos del sistema."
+                value={workerForm.soundEnabled}
+                onChange={(v) => updateWorker("soundEnabled", v)}
+              />
+              <SwitchRow
+                title="Vibración"
+                subtitle="Vibración en alertas."
+                value={workerForm.vibrationEnabled}
+                onChange={(v) => updateWorker("vibrationEnabled", v)}
+                last
+              />
+            </Surface>
 
-          {/* FOOTER */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>W Tracker v2.0.0</Text>
-            <Text style={styles.footerText}>© BDevDPaz 2026</Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+            <Button
+              title={isWorkerDirty ? "Guardar Ajustes de Trabajador" : "Sin cambios"}
+              variant="primary"
+              size="lg"
+              onPress={handleSaveWorker}
+              loading={savingWorker}
+              disabled={!isWorkerDirty || savingWorker}
+              style={styles.saveButton}
+            />
+            {isWorkerDirty ? (
+              <Text style={styles.dirtyHint}>Tienes cambios sin guardar en Trabajador.</Text>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {!hasPin ? (
+              <Surface variant="base" style={styles.card}>
+                <SectionTitle title="Crear PIN de Administrador" icon="navigation" />
+                <Text style={styles.lockDesc}>
+                  Este PIN protege nómina, tarifa, geocerca y datos contractuales. Solo el
+                  administrador lo conoce. No se guarda en texto plano.
+                </Text>
+                <Text style={styles.pinLabel}>Nuevo PIN (4 a 6 dígitos)</Text>
+                <TextInput
+                  style={styles.pinInput}
+                  value={pinInput}
+                  onChangeText={setPinInput}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={6}
+                  placeholder="••••"
+                  placeholderTextColor={TEXT.muted}
+                />
+                <Text style={styles.pinLabel}>Confirmar PIN</Text>
+                <TextInput
+                  style={styles.pinInput}
+                  value={pinConfirm}
+                  onChangeText={setPinConfirm}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={6}
+                  placeholder="••••"
+                  placeholderTextColor={TEXT.muted}
+                />
+                {pinError ? <Text style={styles.pinError}>{pinError}</Text> : null}
+                <Button
+                  title="Crear PIN y Desbloquear"
+                  variant="primary"
+                  size="lg"
+                  onPress={handleCreatePin}
+                  loading={settingPin}
+                  style={styles.saveButton}
+                />
+              </Surface>
+            ) : !isAdminUnlocked ? (
+              <>
+                <Surface variant="base" style={styles.card}>
+                  <SectionTitle title="Administrador Bloqueado" icon="navigation" />
+                  <Text style={styles.lockDesc}>
+                    Ingresa el PIN para editar. Los valores están enmascarados por seguridad.
+                  </Text>
+                  <Text style={styles.pinLabel}>PIN de Administrador</Text>
+                  <TextInput
+                    style={styles.pinInput}
+                    value={pinInput}
+                    onChangeText={setPinInput}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                    placeholder="••••"
+                    placeholderTextColor={TEXT.muted}
+                  />
+                  {pinError ? <Text style={styles.pinError}>{pinError}</Text> : null}
+                  <Button
+                    title="Desbloquear Administrador"
+                    variant="primary"
+                    size="lg"
+                    onPress={handleUnlock}
+                    loading={unlocking}
+                    style={styles.saveButton}
+                  />
+                </Surface>
+
+                <Surface variant="base" style={styles.card}>
+                  <SectionTitle title="Vista Enmascarada" icon="dollar-sign" />
+                  <MaskedRow label="Nombre Completo" value="••••••••" />
+                  <MaskedRow label="Correo para Reportes" value="••••@••••" />
+                  <MaskedRow label="Dirección" value="••••••••" />
+                  <MaskedRow label="Tarifa Base ($/h)" value="$ ••.••" />
+                  <MaskedRow label="Multiplicador Extra" value="•.•" />
+                  <MaskedRow label="Radio GPS" value="••• m" />
+                  <MaskedRow label="Dirección Principal" value="••••••••" />
+                  {lastAdminChangeAt ? (
+                    <Text style={styles.lastChange}>
+                      Último cambio admin: {new Date(lastAdminChangeAt).toLocaleString()}
+                    </Text>
+                  ) : null}
+                </Surface>
+              </>
+            ) : (
+              <>
+                <Surface variant="base" style={styles.card}>
+                  <View style={styles.unlockedHeader}>
+                    <Text style={styles.unlockedText}>🔓 Administrador desbloqueado</Text>
+                    <TouchableOpacity onPress={handleLockAdmin}>
+                      <Text style={styles.lockButtonText}>Bloquear</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {lastAdminChangeAt ? (
+                    <Text style={styles.lastChange}>
+                      Último cambio admin: {new Date(lastAdminChangeAt).toLocaleString()}
+                    </Text>
+                  ) : null}
+                  <View style={styles.row}>
+                    <Button
+                      title={showChangePin ? "Cancelar cambio PIN" : "Cambiar PIN"}
+                      variant="secondary"
+                      size="sm"
+                      onPress={() => setShowChangePin((v) => !v)}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                  {showChangePin ? (
+                    <View style={{ marginTop: SPACING.md }}>
+                      <Text style={styles.pinLabel}>PIN Actual</Text>
+                      <TextInput
+                        style={styles.pinInput}
+                        value={oldPin}
+                        onChangeText={setOldPin}
+                        keyboardType="number-pad"
+                        secureTextEntry
+                        maxLength={6}
+                        placeholder="••••"
+                        placeholderTextColor={TEXT.muted}
+                      />
+                      <Text style={styles.pinLabel}>Nuevo PIN</Text>
+                      <TextInput
+                        style={styles.pinInput}
+                        value={newPin}
+                        onChangeText={setNewPin}
+                        keyboardType="number-pad"
+                        secureTextEntry
+                        maxLength={6}
+                        placeholder="••••"
+                        placeholderTextColor={TEXT.muted}
+                      />
+                      {pinError ? <Text style={styles.pinError}>{pinError}</Text> : null}
+                      <Button
+                        title="Confirmar Cambio de PIN"
+                        variant="primary"
+                        size="lg"
+                        onPress={handleChangePin}
+                        loading={changingPin}
+                        style={styles.saveButton}
+                      />
+                    </View>
+                  ) : null}
+                </Surface>
+
+                <Surface variant="base" style={styles.card}>
+                  <SectionTitle title="Perfil y Contacto" icon="navigation" />
+                  <Input
+                    label="Nombre Completo"
+                    placeholder="Ej: John Doe"
+                    value={adminForm.name}
+                    onChangeText={(v) => updateAdmin("name", v)}
+                  />
+                  <Input
+                    label="Correo para Reportes"
+                    placeholder="ejemplo@correo.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={adminForm.reportEmail}
+                    onChangeText={(v) => updateAdmin("reportEmail", v)}
+                  />
+                  <Input
+                    label="Dirección"
+                    placeholder="Dirección del trabajador"
+                    value={adminForm.address}
+                    onChangeText={(v) => updateAdmin("address", v)}
+                  />
+                  <View style={styles.row}>
+                    <Input
+                      label="ID Empleado"
+                      placeholder="Ej: EMP-001"
+                      value={adminForm.employeeId}
+                      onChangeText={(v) => updateAdmin("employeeId", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                    <Input
+                      label="Empresa"
+                      placeholder="Empresa"
+                      value={adminForm.company}
+                      onChangeText={(v) => updateAdmin("company", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                  </View>
+                  <View style={styles.row}>
+                    <Input
+                      label="Puesto"
+                      placeholder="Ej: Técnico"
+                      value={adminForm.position}
+                      onChangeText={(v) => updateAdmin("position", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                    <Input
+                      label="Fecha Inicio (YYYY-MM-DD)"
+                      placeholder="2025-01-01"
+                      value={adminForm.startDate}
+                      onChangeText={handleStartDateChange}
+                      containerStyle={styles.halfInput}
+                    />
+                  </View>
+                  <Input
+                    label="Dirección Principal"
+                    placeholder="Dirección principal - manual, sin auto check-in"
+                    value={adminForm.principalAddress}
+                    onChangeText={(v) => updateAdmin("principalAddress", v)}
+                    containerStyle={{ marginBottom: 0 }}
+                  />
+                </Surface>
+
+                <Surface variant="base" style={styles.card}>
+                  <SectionTitle title="Nómina y Financiero" icon="dollar-sign" />
+                  <View style={styles.row}>
+                    <Input
+                      label="Tarifa Base ($/h)"
+                      keyboardType="numeric"
+                      value={adminForm.hourlyRate}
+                      onChangeText={(v) => updateAdmin("hourlyRate", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                    <Input
+                      label="Multiplicador Extra"
+                      placeholder="1.5"
+                      keyboardType="numeric"
+                      value={adminForm.overtimeMultiplier}
+                      onChangeText={(v) => updateAdmin("overtimeMultiplier", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                  </View>
+                  <View style={styles.row}>
+                    <Input
+                      label="Horas Base (HH:MM)"
+                      placeholder="06:00"
+                      value={adminForm.baseWorkHour}
+                      onChangeText={(v) => updateAdmin("baseWorkHour", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                    <View style={styles.halfInput}>
+                      <Text style={styles.segmentLabel}>Umbral Horas Extra</Text>
+                      <View style={styles.fixedBox}>
+                        <Text style={styles.fixedValueText}>8 h</Text>
+                      </View>
+                      <Text style={styles.fixedHint}>Fijo por ley. No editable.</Text>
+                    </View>
+                  </View>
+                  <View style={styles.row}>
+                    <View style={styles.halfInput}>
+                      <Text style={styles.segmentLabel}>Almuerzo Descuento (Min)</Text>
+                      <View style={styles.stepperRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminDiscountAtMin && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminLunchDiscountStep(-LUNCH_STEP_MINUTES)}
+                          disabled={adminDiscountAtMin}
+                        >
+                          <Text style={styles.stepperButtonText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stepperValue}>
+                          {adminForm.lunchDiscountMinutes} m
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminDiscountAtMax && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminLunchDiscountStep(LUNCH_STEP_MINUTES)}
+                          disabled={adminDiscountAtMax}
+                        >
+                          <Text style={styles.stepperButtonText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.geofenceHint}>30 - 60 min, pasos de 5 min.</Text>
+                    </View>
+                    <View style={styles.halfInput}>
+                      <Text style={styles.segmentLabel}>Almuerzo Estándar (Min)</Text>
+                      <View style={styles.stepperRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminStandardAtMin && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminStandardLunchStep(-LUNCH_STEP_MINUTES)}
+                          disabled={adminStandardAtMin}
+                        >
+                          <Text style={styles.stepperButtonText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stepperValue}>
+                          {adminForm.standardLunchMinutes} m
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.stepperButton,
+                            adminStandardAtMax && styles.stepperButtonDisabled,
+                          ]}
+                          onPress={() => handleAdminStandardLunchStep(LUNCH_STEP_MINUTES)}
+                          disabled={adminStandardAtMax}
+                        >
+                          <Text style={styles.stepperButtonText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.geofenceHint}>30 - 60 min, pasos de 5 min.</Text>
+                    </View>
+                  </View>
+                  <View style={styles.row}>
+                    <Input
+                      label="Moneda"
+                      placeholder="USD"
+                      autoCapitalize="characters"
+                      value={adminForm.currency}
+                      onChangeText={(v) => updateAdmin("currency", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                    <Input
+                      label="Día de Pago"
+                      placeholder="Ej: Viernes"
+                      value={adminForm.payDay}
+                      onChangeText={(v) => updateAdmin("payDay", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                  </View>
+                  <Input
+                    label="Método de Pago"
+                    placeholder="Ej: Transferencia"
+                    value={adminForm.paymentMethod}
+                    onChangeText={(v) => updateAdmin("paymentMethod", v)}
+                    containerStyle={{ marginBottom: 0 }}
+                  />
+                </Surface>
+
+                <Surface variant="base" style={styles.card}>
+                  <SectionTitle title="Operaciones y Geocerca" icon="map-pin" />
+                  <View style={styles.geofenceBlock}>
+                    <Text style={styles.segmentLabel}>Radio GPS (Metros)</Text>
+                    <View style={styles.stepperRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.stepperButton,
+                          geofenceAtMin && styles.stepperButtonDisabled,
+                        ]}
+                        onPress={() => handleGeofenceStep(-GEOFENCE_RADIUS_STEP)}
+                        disabled={geofenceAtMin}
+                      >
+                        <Text style={styles.stepperButtonText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.stepperValue}>
+                        {adminForm.geofenceRadius} m
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.stepperButton,
+                          geofenceAtMax && styles.stepperButtonDisabled,
+                        ]}
+                        onPress={() => handleGeofenceStep(GEOFENCE_RADIUS_STEP)}
+                        disabled={geofenceAtMax}
+                      >
+                        <Text style={styles.stepperButtonText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.geofenceHint}>
+                      80 - 250 m, pasos de 10 m. Default 150 m.
+                    </Text>
+                  </View>
+                  <Input
+                    label="Límite Destinos/Día"
+                    keyboardType="number-pad"
+                    value={adminForm.destinationLimit}
+                    onChangeText={(v) => updateAdmin("destinationLimit", v)}
+                  />
+                  <View style={styles.row}>
+                    <Input
+                      label="Gracia Salida (Min)"
+                      keyboardType="number-pad"
+                      value={adminForm.gracePeriodMinutes}
+                      onChangeText={(v) => updateAdmin("gracePeriodMinutes", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                    <Input
+                      label="Tolerancia Entrada (Min)"
+                      keyboardType="number-pad"
+                      value={adminForm.entryToleranceMinutes}
+                      onChangeText={(v) => updateAdmin("entryToleranceMinutes", v)}
+                      containerStyle={styles.halfInput}
+                    />
+                  </View>
+                  <SwitchRow
+                    title="Permitir Multi-Destino"
+                    subtitle="Permite registrar múltiples sitios en un día."
+                    value={adminForm.allowMultiDestination}
+                    onChange={(v) => updateAdmin("allowMultiDestination", v)}
+                  />
+                  <SwitchRow
+                    title="Pagar Tiempo de Traslado"
+                    subtitle="Incluir el tiempo de traslado en la nómina final, aunque no sea multi-destino."
+                    value={adminForm.payTransferTime}
+                    onChange={(v) => updateAdmin("payTransferTime", v)}
+                    last
+                  />
+                </Surface>
+
+                <Button
+                  title={isAdminDirty ? "Guardar Cambios de Administrador" : "Sin cambios"}
+                  variant="primary"
+                  size="lg"
+                  onPress={handleSaveAdmin}
+                  loading={savingAdmin}
+                  disabled={!isAdminDirty || savingAdmin}
+                  style={styles.saveButton}
+                />
+                {isAdminDirty ? (
+                  <Text style={styles.dirtyHint}>
+                    Tienes cambios sin guardar en Administrador. Se pedirá confirmación.
+                  </Text>
+                ) : null}
+              </>
+            )}
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// ── ESTILOS ─────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: PALETTE.obsidian },
-  keyboardRoot: { flex: 1 },
-  scrollContent: { paddingBottom: 100 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACING.md },
-  loadingText: { color: TEXT.secondary, fontSize: FONT.body.size, fontFamily: 'Montserrat' },
-  header: { marginHorizontal: SPACING.xl, marginTop: SPACING.sm, marginBottom: SPACING.lg },
-  headerTitle: { color: TEXT.primary, fontSize: FONT.h2.size, fontWeight: '700', fontFamily: 'Montserrat', letterSpacing: -0.5 },
-  headerSubtitle: { color: TEXT.secondary, fontSize: FONT.label.size, fontWeight: '600', letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'Montserrat', marginTop: 2 },
-  sectionCard: { backgroundColor: PALETTE.graphite, borderRadius: RADIUS.cards, borderColor: PALETTE.steelLine, borderWidth: 1, marginHorizontal: SPACING.xl, padding: SPACING.lg, marginBottom: SPACING.xl, gap: SPACING.md },
-  sectionTitle: { color: TEXT.secondary, fontSize: FONT.label.size, fontWeight: '700', letterSpacing: 1.5, fontFamily: 'Montserrat' },
-  sectionHint: { color: TEXT.muted, fontSize: FONT.caption.size, fontFamily: 'Montserrat', marginTop: -SPACING.xs, marginBottom: SPACING.xs },
-  fieldGroup: { gap: SPACING.xs },
-  fieldLabel: { color: TEXT.muted, fontSize: FONT.caption.size, fontFamily: 'Montserrat', textTransform: 'uppercase', letterSpacing: 1 },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.carbonMist, borderColor: PALETTE.steelLine, borderWidth: 1, borderRadius: RADIUS.inputs, paddingHorizontal: SPACING.md, height: 48, gap: SPACING.sm },
-  inputWrapperDisabled: { opacity: 0.5 },
-  input: { flex: 1, color: TEXT.primary, fontSize: FONT.body.size, fontFamily: 'Montserrat' },
-  inputDisabled: { color: TEXT.muted },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.xs },
-  switchTextGroup: { flex: 1, paddingRight: SPACING.md },
-  switchTitle: { color: TEXT.primary, fontSize: FONT.bodyStrong.size - 1, fontWeight: '600', fontFamily: 'Montserrat' },
-  switchSubtitle: { color: TEXT.muted, fontSize: FONT.caption.size, fontFamily: 'Montserrat', marginTop: 2 },
-  textDisabled: { color: TEXT.muted },
-  adminControlBlock: { marginHorizontal: SPACING.xl, padding: SPACING.lg, borderRadius: RADIUS.cards, backgroundColor: PALETTE.carbonMist, marginBottom: SPACING.xl, borderWidth: 1, borderColor: PALETTE.steelLine },
-  adminControlBlockUnlocked: { borderColor: PALETTE.mutedGold },
-  adminHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: SPACING.md },
-  adminTitle: { color: TEXT.primary, fontSize: FONT.bodyStrong.size, fontWeight: '700', fontFamily: 'Montserrat' },
-  adminLockedContent: { gap: SPACING.md },
-  pinInput: { backgroundColor: PALETTE.graphite, color: TEXT.primary, fontSize: FONT.body.size, fontFamily: 'Montserrat', borderRadius: RADIUS.inputs, padding: SPACING.md, borderWidth: 1, borderColor: PALETTE.steelLine, textAlign: 'center', letterSpacing: 4 },
-  adminUnlockedContent: { gap: SPACING.md },
-  adminActionRow: { flexDirection: 'row', gap: SPACING.md },
-  dirtyHint: { color: PALETTE.amberWarning, fontSize: FONT.caption.size, fontFamily: 'Montserrat', textAlign: 'center' },
-  languageSection: { paddingTop: SPACING.sm, gap: SPACING.xs },
-  languageRow: { flexDirection: 'row', gap: SPACING.sm },
-  langBtn: { flex: 1, paddingVertical: SPACING.sm + 2, borderRadius: RADIUS.inputs, borderWidth: 1, borderColor: PALETTE.steelLine, alignItems: 'center', backgroundColor: PALETTE.carbonMist },
-  langBtnActive: { backgroundColor: 'rgba(197, 160, 89, 0.12)', borderColor: PALETTE.mutedGold },
-  langBtnDisabled: { opacity: 0.5 },
-  langBtnText: { color: TEXT.muted, fontSize: FONT.body.size - 1, fontFamily: 'Montserrat' },
-  langBtnTextActive: { color: PALETTE.mutedGold, fontWeight: '600' },
-  permissionStatusText: { color: TEXT.secondary, fontSize: FONT.caption.size, fontFamily: 'Montserrat', marginTop: SPACING.sm },
-  permissionStatusError: { color: PALETTE.deepRed },
-  reviewPermissionsBtn: { marginTop: SPACING.sm, paddingVertical: SPACING.sm, borderRadius: RADIUS.inputs, borderWidth: 1, borderColor: PALETTE.steelLine, alignItems: 'center', backgroundColor: PALETTE.carbonMist },
-  reviewPermissionsText: { color: TEXT.primary, fontSize: FONT.body.size - 1, fontFamily: 'Montserrat' },
-  footer: { alignItems: 'center', paddingBottom: SPACING.xxl, opacity: 0.5, gap: 4 },
-  footerText: { color: TEXT.muted, fontSize: FONT.caption.size, fontFamily: 'Montserrat' },
+  safeArea: {
+    flex: 1,
+    backgroundColor: PALETTE.obsidian,
+    // Reserva espacio para el toast global (ToastService) que es un overlay
+    // absoluto en la parte superior. Sin este inset, el toast tapa el título AJUSTES.
+    paddingTop: Platform.OS === "android" ? 64 : 16,
+  },
+  center: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tabsContainer: {
+    flexDirection: "row",
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    backgroundColor: PALETTE.steelLine,
+    borderRadius: 12,
+    padding: 4,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: PALETTE.obsidian,
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: TEXT.muted,
+    letterSpacing: 0.5,
+  },
+  tabTextActive: {
+    color: PALETTE.mutedGold,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxxl,
+  },
+  card: {
+    marginBottom: SPACING.lg,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.steelLine,
+    paddingBottom: SPACING.sm,
+  },
+  sectionTitleText: {
+    fontSize: FONT.h3.size,
+    fontWeight: "700",
+    color: TEXT.primary,
+    textTransform: "uppercase",
+  },
+  row: {
+    flexDirection: "row",
+    gap: SPACING.md,
+  },
+  halfInput: {
+    flex: 1,
+  },
+  switchRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.steelLine,
+  },
+  switchRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  switchTextContainer: {
+    flex: 1,
+    paddingRight: SPACING.md,
+  },
+  switchTitle: {
+    fontSize: FONT.bodyStrong.size,
+    fontWeight: "600",
+    color: TEXT.primary,
+  },
+  switchSubtitle: {
+    fontSize: 11,
+    color: TEXT.muted,
+    marginTop: 2,
+  },
+  saveButton: {
+    marginTop: SPACING.sm,
+  },
+  dirtyHint: {
+    marginTop: SPACING.sm,
+    textAlign: "center",
+    fontSize: 12,
+    color: TEXT.muted,
+  },
+  lockDesc: {
+    fontSize: 13,
+    color: TEXT.muted,
+    lineHeight: 18,
+    marginBottom: SPACING.md,
+  },
+  pinLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: TEXT.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    marginTop: SPACING.sm,
+  },
+  pinInput: {
+    borderWidth: 1,
+    borderColor: PALETTE.steelLine,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 18,
+    letterSpacing: 4,
+    color: TEXT.primary,
+    backgroundColor: PALETTE.obsidian,
+  },
+  pinError: {
+    color: "#FF6B6B",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  maskedRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.steelLine,
+  },
+  maskedLabel: {
+    fontSize: 13,
+    color: TEXT.muted,
+  },
+  maskedValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: TEXT.primary,
+    letterSpacing: 2,
+  },
+  unlockedHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.sm,
+  },
+  unlockedText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: PALETTE.mutedGold,
+  },
+  lockButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: TEXT.primary,
+    textDecorationLine: "underline",
+  },
+  lastChange: {
+    fontSize: 11,
+    color: TEXT.muted,
+    marginTop: 6,
+  },
+  segmentRow: {
+    marginBottom: SPACING.md,
+  },
+  segmentLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: TEXT.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  segmentContainer: {
+    flexDirection: "row",
+    backgroundColor: PALETTE.steelLine,
+    borderRadius: 10,
+    padding: 4,
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 6,
+  },
+  segmentButtonActive: {
+    backgroundColor: PALETTE.obsidian,
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: TEXT.muted,
+  },
+  segmentTextActive: {
+    color: PALETTE.mutedGold,
+  },
+  geofenceBlock: {
+    marginBottom: SPACING.md,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: PALETTE.steelLine,
+    borderRadius: 10,
+    padding: 4,
+  },
+  stepperButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: PALETTE.obsidian,
+  },
+  stepperButtonDisabled: {
+    opacity: 0.4,
+  },
+  stepperButtonText: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: PALETTE.mutedGold,
+  },
+  stepperValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: TEXT.primary,
+  },
+  geofenceHint: {
+    fontSize: 11,
+    color: TEXT.muted,
+    marginTop: 6,
+  },
+  // P3: caja fija para el umbral 8h, no editable.
+  fixedBox: {
+    backgroundColor: PALETTE.steelLine,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fixedValueText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: TEXT.primary,
+  },
+  fixedHint: {
+    fontSize: 11,
+    color: TEXT.muted,
+    marginTop: 6,
+    textAlign: "center",
+  },
 });
